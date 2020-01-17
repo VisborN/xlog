@@ -164,6 +164,76 @@ func (L *Logger) Close() {
 	}
 }
 
+// AddToDefaults adds given recorders to defaults in that logger.
+//
+// (The default recorders list determinate which recorders will use for
+// writing if custom recorders are not specified in the log message.)
+func (L *Logger) AddToDefaults(recorders []RecorderID) error {
+	if L.recorders == nil { return NoRecordersError }
+
+	// check registered recorders
+	notRegisteredErr := RecordersError{
+		err: errors.New("some of the given recorders are not registered"),
+	}
+	for _, recID := range recorders {
+		if _, exist := L.recorders[recID]; !exist {
+			notRegisteredErr.Add(recID)
+		}
+	}
+	if notRegisteredErr.NotEmpty() {
+		return notRegisteredErr
+	}
+
+main_iter:
+	for _, recID := range recorders {
+
+		// check defaults for duplicate
+		for _, defID := range L.defaults {
+			if defID == recID { // id already in the defaults
+				continue main_iter; // skip this recorder
+			}
+		}
+
+		L.defaults = append(L.defaults, recID)
+	}
+
+	return nil
+}
+
+// RemoveFromDefaults removes given recorders form defaults in that logger.
+//
+// (The default recorders list determinate which recorders will use for
+// writing if custom recorders are not specified in the log message.)
+func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
+	if L.recorders == nil { return NoRecordersError }
+
+	// check registered recorders
+	notRegisteredErr := RecordersError{
+		err: errors.New("some of the given recorders are not registered"),
+	}
+	for _, recID := range recorders {
+		if _, exist := L.recorders[recID]; !exist {
+			notRegisteredErr.Add(recID)
+		}
+	}
+	if notRegisteredErr.NotEmpty() {
+		return notRegisteredErr
+	}
+
+	// delete given ids from defaults
+	for _, recID := range recorders {
+		for i, defID := range L.defaults {
+			if defID == recID {
+				L.defaults[i] = L.defaults[len(L.defaults)-1]
+				//L.defaults[len(L.defaults)-1] = RecorderID("")
+				L.defaults = L.defaults[:len(L.defaults)-1]
+			}
+		}
+	}
+
+	return nil
+}
+
 // -----------------------------------------------------------------------------
 
 // This function actually has got a protector role because in some places
