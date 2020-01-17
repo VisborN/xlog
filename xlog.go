@@ -127,6 +127,43 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 	return true
 }
 
+// Initialise calls initialisation functions of each registered recorder.
+//
+// If all of them return nil (no error), this function also returns nil.
+// If some initialisation functions return error, this function returns
+// InitialisationError with map of failed recorders and them errors.
+//
+// Be careful, even if it returns an error, some of the recorders can be
+// initialised successfully. You can get a global processing status by
+// InitialisationError.ErrorInAll. If it has false value, it means that
+// some of the recorders have been initialised.
+func (L *Logger) Initialise() error {
+	if L.recorders == nil {
+		return NoRecordersError
+	}
+
+	e := errInitialisationError()
+	for id, rec := range L.recorders {
+		if err := rec.initialise(); err != nil {
+			e.RecordersErrors[id] = err
+		}
+	}
+	if l := len(e.RecordersErrors); l > 0 {
+		if l == len(L.recorders) { e.SetAll() }
+		return e
+	}
+
+	return nil
+}
+
+// Close calls closing functions of each registered recorder.
+func (L *Logger) Close() {
+	if L.recorders == nil { return }
+	for _, rec := range L.recorders {
+		rec.close()
+	}
+}
+
 // -----------------------------------------------------------------------------
 
 // This function actually has got a protector role because in some places
