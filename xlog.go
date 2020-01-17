@@ -3,6 +3,7 @@ package xlog
 import (
 	"fmt"
 	"time"
+	"errors"
 )
 
 const ( // severity flags (log level)
@@ -27,7 +28,7 @@ type logMsg struct {
 	data interface{}
 }
 
-// NewlogMsg allocates and returns a new logMsg. 
+// NewLogMsg allocates and returns a new logMsg. 
 func NewLogMsg() *logMsg {
 	lm := new(logMsg)
 	lm.time = time.Now()
@@ -71,6 +72,7 @@ func (LM *logMsg) Set(msgFmt string, msgArgs ...interface{}) *logMsg {
 
 type logRecorder interface {
 	initialise() error
+	//isInitialised() bool
 	close()
 	write(logMsg)
 }
@@ -80,7 +82,49 @@ type RecorderID string
 type Logger struct {
 	recorders map[RecorderID]logRecorder
 	sevMapping map[RecorderID]uint16
-	defaultRec []RecorderID
+	defaults []RecorderID // list of default recorders
+}
+
+// The same as RegisterRecorderEx, but adds recorder to defaults automatically.
+func (L *Logger) RegisterRecorder(id RecorderID, recorder logRecorder) bool {
+	return L.RegisterRecorderEx(id, true, recorder)
+}
+
+// RegisterRecorder registers the recorder in the logger with the given id.
+// An asDefault parameter says whether the need to set it as default recorder.
+//
+// The function returns true on success, and false if the given id is already bound.
+//
+// This function can panic if it found a critical error in the logger data.
+func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logRecorder) bool {
+	if L.recorders == nil {
+		L.recorders = make(map[RecorderID]logRecorder)
+	} else {
+		for recID, _ := range L.recorders {
+			if recID == id { return false }
+		}
+	}
+	L.recorders[id] = recorder
+
+	// recorder works on all severities by default
+	if L.sevMapping == nil {
+		L.sevMapping = make(map[RecorderID]uint16)
+	}
+	L.sevMapping[id] = SeverityAll
+
+	// check for ensure that it's correct
+	for _, recID := range L.defaults {
+		if recID == id {
+			panic("xlog: impossible identifier found in default recorders list")
+		}
+	}
+
+	// set as default if necessary
+	if asDefault {
+		L.defaults = append(L.defaults, id)
+	}
+
+	return true
 }
 
 // -----------------------------------------------------------------------------
