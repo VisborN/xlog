@@ -234,6 +234,70 @@ func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
 	return nil
 }
 
+// Write builds the message with format line and specified severity flag, then calls
+// WriteMsg. It allows avoiding calling fmt.Sprintf() function and logMsg's functions
+// directly, it wraps them. Returns nil in case of success otherwise returns an error.
+func (L *Logger) Write(severity uint16, msgFmt string, msgArgs ...interface{}) error {
+	msg := NewLogMsg().Severity(severity)
+	msg.Set(msgFmt, msgArgs...)
+	return L.WriteMsg(nil, msg)
+}
+
+// WriteMsg writes given message using the specified recorders of this logger.
+// If custom recorders are not specified, uses default recorders. Returns nil
+// on success and error on fail.
+//
+// This function can invoke panic in case of critical errors (usually unreachable).
+//
+// TODO: additional log/outp notifications at errors
+func (L *Logger) WriteMsg(recorders []RecorderID, msg *logMsg) error {
+	if L.recorders == nil { return NoRecordersError }
+	if len(recorders) == 0 && len(L.defaults) == 0 {
+		return errors.New(
+			"the logger has no default recorders, "+
+			"but custom recorders are not specified")
+	}
+
+	if L.sevMapping == nil {
+		panic("xlog: bumped to nil (severity mapping is not initialised)")
+	}
+
+	if len(recorders) > 0 {
+		// check registered recorders
+		notRegisteredErr := RecordersError{
+			err: errors.New("some of the given recorders are not registered"),
+		}
+		for _, recID := range recorders {
+			if _, exist := L.recorders[recID]; !exist {
+				notRegisteredErr.Add(recID)
+			}
+		}
+		if notRegisteredErr.NotEmpty() {
+			return notRegisteredErr
+		}
+	} else { // use default recorders
+		recorders = L.defaults
+	}
+
+	for _, recID := range recorders {
+		if sev, exist := L.sevMapping[recID]; exist {
+			if sev == 0 { panic("xlog: severity mask is zero") }
+			if (*msg).severity == 0 { panic("xlog: msg.sev = 0") } // TODO: remove, not here
+			if sev & (*msg).severity > 0 {
+				if rec, exist := L.recorders[recID]; exist {
+					rec.write(*msg) // <---
+				} else {
+					panic("xlog: recorder id can't be found in registered recorders map")
+				}
+			}
+		} else {
+			panic("xlog: recorder id can't be found in severity mapping")
+		}
+	}
+
+	return nil
+}
+
 // -----------------------------------------------------------------------------
 
 // This function actually has got a protector role because in some places
