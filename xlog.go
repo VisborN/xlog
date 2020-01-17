@@ -69,6 +69,22 @@ func (LM *logMsg) Set(msgFmt string, msgArgs ...interface{}) *logMsg {
 
 // -----------------------------------------------------------------------------
 
+type logRecorder interface {
+	initialise() error
+	close()
+	write(logMsg)
+}
+
+type RecorderID string
+
+type Logger struct {
+	recorders map[RecorderID]logRecorder
+	sevMapping map[RecorderID]uint16
+	defaultRec []RecorderID
+}
+
+// -----------------------------------------------------------------------------
+
 // This function actually has got a protector role because in some places
 // a severity argument should have only one of these flags. So it ensures
 // (accordingly to the depth order) that severity value provide only one
