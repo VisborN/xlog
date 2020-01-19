@@ -20,7 +20,7 @@ type gologRecorder struct {
 func NewGologRecorder(writer io.Writer, prefix string) *gologRecorder {
 	r := new(gologRecorder)
 	r.format = GologDefaultFormatter
-	r.prefix = prefix
+	r.prefix = prefix + " "
 	r.writer = writer
 	return r
 }
