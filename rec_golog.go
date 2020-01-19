@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-type stdlogRecorder struct {
+type gologRecorder struct {
 	initialised bool
 	prefix      string
 	format      FormatFunc
@@ -15,38 +15,39 @@ type stdlogRecorder struct {
 	closer      func(interface{})
 }
 
-// NewStdlogRecorder allocates and returns a new default log recorder.
-func NewStdlogRecorder(writer io.Writer, prefix string) *stdlogRecorder {
-	r := new(stdlogRecorder)
+// NewGologRecorder allocates and returns a new recorder 
+// which uses standart go log package for writing.
+func NewGologRecorder(writer io.Writer, prefix string) *gologRecorder {
+	r := new(gologRecorder)
 	r.format = StdlogDefaultFormatter
 	r.prefix = prefix
 	r.writer = writer
 	return r
 }
 
-func (R *stdlogRecorder) initialise() error {
+func (R *gologRecorder) initialise() error {
 	if R.initialised { return nil }
 	R.Logger = log.New(R.writer, R.prefix, log.LstdFlags)
 	R.initialised = true
 	return nil
 }
 
-func (R *stdlogRecorder) close() {
+func (R *gologRecorder) close() {
 	if R.closer != nil { R.closer(nil) }
 	R.initialised = false
 }
 
 // FormatFunc sets custom formatter function for this recorder.
-func (R *stdlogRecorder) FormatFunc(f FormatFunc) *stdlogRecorder {
+func (R *gologRecorder) FormatFunc(f FormatFunc) *gologRecorder {
 	R.format = f; return R
 }
 
 // OnClose sets function which will be executed on close() function call.
-func (R *stdlogRecorder) OnClose(f func(interface{})) *stdlogRecorder {
+func (R *gologRecorder) OnClose(f func(interface{})) *gologRecorder {
 	R.closer = f; return R
 }
 
-func (R *stdlogRecorder) write(msg logMsg) error {
+func (R *gologRecorder) write(msg logMsg) error {
 	if !R.initialised { return NotInitialised }
 	msgData := msg.content
 	if R.format != nil {
@@ -56,7 +57,7 @@ func (R *stdlogRecorder) write(msg logMsg) error {
 	return nil
 }
 
-func StdlogDefaultFormatter(msg *logMsg) string {
+func GologDefaultFormatter(msg *logMsg) string {
 	var sevPrefix string
 	switch msg.severity {
 	case Critical: sevPrefix = "CRITICAL"
