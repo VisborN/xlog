@@ -19,7 +19,7 @@ type gologRecorder struct {
 // which uses standart go log package for writing.
 func NewGologRecorder(writer io.Writer, prefix string) *gologRecorder {
 	r := new(gologRecorder)
-	r.format = StdlogDefaultFormatter
+	r.format = GologDefaultFormatter
 	r.prefix = prefix
 	r.writer = writer
 	return r

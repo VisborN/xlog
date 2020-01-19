@@ -17,6 +17,11 @@ const ( // severity flags (log level)
 	Debug3   uint16 = 0x80 // 0000 0000 1000 0000
 )
 
+// bit-reset (reversed) mask for severity flags
+const severityShadowMask uint16 = 0xFF00
+// bit-reset (reversed) mask for attribute flags
+const attributeShadowMask uint16 = 0xFF00
+
 const SeverityAll   uint16 = 0xFF
 const SeverityMajor uint16 = 0x0F
 const SeverityMinor uint16 = 0xF0
@@ -83,7 +88,7 @@ type RecorderID string
 
 type Logger struct {
 	recorders map[RecorderID]logRecorder
-	sevMapping map[RecorderID]uint16
+	severityMasks map[RecorderID]uint16 // determines what severities each recorder will write
 	defaults []RecorderID // list of default recorders
 }
 
@@ -99,6 +104,9 @@ func (L *Logger) RegisterRecorder(id RecorderID, recorder logRecorder) bool {
 //
 // This function can panic if it found a critical error in the logger data.
 func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logRecorder) bool {
+	// this function should initialise all related maps
+	// other functions will panic in case of nil-map
+
 	if L.recorders == nil {
 		L.recorders = make(map[RecorderID]logRecorder)
 	} else {
@@ -109,10 +117,10 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 	L.recorders[id] = recorder
 
 	// recorder works on all severities by default
-	if L.sevMapping == nil {
-		L.sevMapping = make(map[RecorderID]uint16)
+	if L.severityMasks == nil {
+		L.severityMasks = make(map[RecorderID]uint16)
 	}
-	L.sevMapping[id] = SeverityAll
+	L.severityMasks[id] = SeverityAll
 
 	// check for ensure that it's correct
 	for _, recID := range L.defaults {
@@ -236,6 +244,25 @@ func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
 	return nil
 }
 
+// SetSeverityMask sets which severities allowed for the given recorder in this logger.
+func (L *Logger) SetSeverityMask(recorder RecorderID, flags uint16) error {
+	if L.recorders == nil { return NoRecordersError }
+	if sevMask, exist := L.severityMasks[recorder]; !exist {
+		if _, exist := L.recorders[recorder]; !exist {
+			return RecordersError{ []RecorderID{recorder},
+				fmt.Errorf("the recorder '%s' is not registered", recorder),
+			}
+		} else {
+			panic("xlog: recorder id can't be found in severity masks map")
+		}
+		_ = sevMask // THAT'S COMPLETELY STUPID, GOLANG
+	} else {
+		// zero is allowed (recorder blocked)
+		sevMask := flags &^ severityShadowMask
+	}
+	return nil
+}
+
 // Write builds the message with format line and specified severity flag, then calls
 // WriteMsg. It allows avoiding calling fmt.Sprintf() function and logMsg's functions
 // directly, it wraps them. Returns nil in case of success otherwise returns an error.
@@ -260,10 +287,6 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *logMsg) error {
 			"but custom recorders are not specified")
 	}
 
-	if L.sevMapping == nil {
-		panic("xlog: bumped to nil (severity mapping is not initialised)")
-	}
-
 	if len(recorders) > 0 {
 		// check registered recorders
 		notRegisteredErr := RecordersError{
@@ -282,20 +305,20 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *logMsg) error {
 	}
 
 	for _, recID := range recorders {
-		if sev, exist := L.sevMapping[recID]; exist {
-			if sev == 0 { panic("xlog: severity mask is zero") }
-			if (*msg).severity == 0 { panic("xlog: msg.sev = 0") } // TODO: remove, not here
-			if sev & (*msg).severity > 0 {
+		if sevMask, exist := L.severityMasks[recID]; exist {
+			if sevMask == 0 { return fmt.Errorf("severity mask is 0") }
+			if (*msg).severity == 0 { panic("xlog: msg.sev = 0") } // TODO: remove
+			if (*msg).severity & sevMask > 0 {
 				if rec, exist := L.recorders[recID]; exist {
 					if err := rec.write(*msg); err != nil { // <---
-						return err
+						return err // ignore remaining
 					}
 				} else {
 					panic("xlog: recorder id can't be found in registered recorders map")
 				}
 			}
-		} else {
-			panic("xlog: recorder id can't be found in severity mapping")
+			} else {
+			panic("xlog: recorder id can't be found in severity masks map")
 		}
 	}
 
