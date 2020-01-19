@@ -48,6 +48,9 @@ func (R *ioDirectRecorder) write(msg LogMsg) error {
 	if R.format != nil {
 		msgData = R.format(&msg)
 	}
+	if msgData[len(msgData)-1] != '\n' {
+		msgData += "\n"
+	}
 	if _, err := R.writer.Write([]byte(msgData)); err != nil {
 		return fmt.Errorf("writer error: %s", err.Error())
 	}
