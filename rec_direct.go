@@ -21,7 +21,7 @@ func NewIoDirectRecorder(writer io.Writer) *ioDirectRecorder {
 
 // this function never returns a non-nil error
 func (R *ioDirectRecorder) initialise() error {
-	if !R.initialised { return nil }
+	if R.initialised { return nil }
 	R.initialised = true
 	return nil
 }
