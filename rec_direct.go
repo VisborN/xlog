@@ -36,6 +36,7 @@ func (R *ioDirectRecorder) FormatFunc(f FormatFunc) *ioDirectRecorder {
 	R.format = f; return R
 }
 
+// OnClose sets function which will be executed on close() function call.
 func (R *ioDirectRecorder) OnClose(f func(interface{})) *ioDirectRecorder {
 	R.closer = f; return R
 }
