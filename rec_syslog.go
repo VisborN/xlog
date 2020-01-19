@@ -5,6 +5,7 @@ import "log/syslog"
 type syslogRecorder struct {
 	initialised bool
 	prefix      string
+	format      FormatFunc
 	logger      *syslog.Writer
 }
 
@@ -27,9 +28,16 @@ func (R *syslogRecorder) close() {
 	R.logger.Close()
 }
 
+func (R *syslogRecorder) FormatFunc(f FormatFunc) *syslogRecorder {
+	R.format = f; return R
+}
+
 func (R *syslogRecorder) write(msg logMsg) {
 	if !R.initialised { return }
 	msgData := msg.content
+	if R.format != nil {
+		msgData = R.format(msg)
+	}
 	switch msg.severity {
 	case Critical: R.logger.Crit(msgData)
 	case Error:    R.logger.Err(msgData)
