@@ -1,7 +1,6 @@
 package xlog
 
 import (
-	"os"
 	"io"
 	"fmt"
 )
@@ -44,4 +43,5 @@ func (R *ioDirectRecorder) write(msg logMsg) error {
 	if _, err := R.writer.Write([]byte(msgData)); err != nil {
 		return fmt.Errorf("writer error: %s", err.Error())
 	}
+	return nil
 }

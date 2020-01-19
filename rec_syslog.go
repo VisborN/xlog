@@ -53,4 +53,5 @@ func (R *syslogRecorder) write(msg logMsg) error {
 	default: // unreachable, upper call-chain checks
 		panic("xlog: unexpected severity value")
 	}
+	return nil
 }
