@@ -22,7 +22,10 @@ func (R *syslogRecorder) initialise() error {
 	return nil
 }
 
-func (R *syslogRecorder) close() { R.logger.Close() }
+func (R *syslogRecorder) close() {
+	R.initialised = false
+	R.logger.Close()
+}
 
 func (R *syslogRecorder) write(msg logMsg) {
 	if !R.initialised { return }
