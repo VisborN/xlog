@@ -258,7 +258,7 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags uint16) error {
 		_ = sevMask // THAT'S COMPLETELY STUPID, GOLANG
 	} else {
 		// zero is allowed (recorder blocked)
-		sevMask := flags &^ severityShadowMask
+		sevMask = flags &^ severityShadowMask
 	}
 	return nil
 }
