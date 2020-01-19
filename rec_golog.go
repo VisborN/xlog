@@ -33,6 +33,7 @@ func (R *gologRecorder) initialise() error {
 }
 
 func (R *gologRecorder) close() {
+	if !R.initialised { return }
 	if R.closer != nil { R.closer(nil) }
 	R.initialised = false
 }

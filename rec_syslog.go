@@ -25,6 +25,7 @@ func (R *syslogRecorder) initialise() error {
 }
 
 func (R *syslogRecorder) close() {
+	if !R.initialised { return }
 	R.initialised = false
 	R.logger.Close()
 }

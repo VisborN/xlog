@@ -27,6 +27,7 @@ func (R *ioDirectRecorder) initialise() error {
 }
 
 func (R *ioDirectRecorder) close() {
+	if !R.initialised { return }
 	if R.closer != nil { R.closer(nil) }
 	R.initialised = false
 }
