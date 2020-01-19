@@ -9,6 +9,7 @@ type syslogRecorder struct {
 	logger      *syslog.Writer
 }
 
+// NewSyslogRecorder allocates  and returns a new syslog recorder.
 func NewSyslogRecorder(prefix string) *syslogRecorder {
 	r := new(syslogRecorder)
 	r.prefix = prefix
@@ -28,10 +29,12 @@ func (R *syslogRecorder) close() {
 	R.logger.Close()
 }
 
+// FormatFunc sets custom formatter function for this recorder.
 func (R *syslogRecorder) FormatFunc(f FormatFunc) *syslogRecorder {
 	R.format = f; return R
 }
 
+// this function can invoke panic on critical error (unreachable)
 func (R *syslogRecorder) write(msg logMsg) {
 	if !R.initialised { return }
 	msgData := msg.content
@@ -47,7 +50,7 @@ func (R *syslogRecorder) write(msg logMsg) {
 	case Debug1:   R.logger.Debug("@D1 " + msgData)
 	case Debug2:   R.logger.Debug("@D2 " + msgData)
 	case Debug3:   R.logger.Debug("@D3 " + msgData)
-	default: // unreachable
+	default: // unreachable, upper call-chain checks
 		panic("xlog: unexpected severity value")
 	}
 }
