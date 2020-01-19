@@ -6,6 +6,7 @@ import (
 )
 
 var NoRecordersError = errors.New("the logger has no registered recorders")
+var NotInitialised = errors.New("can't write, the recorder is not initialised")
 
 //var NotRegisteredError = RecordersError{
 //	err: errors.New("the given recorder is not registered"),

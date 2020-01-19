@@ -76,7 +76,7 @@ type logRecorder interface {
 	initialise() error
 	//isInitialised() bool
 	close()
-	write(logMsg)
+	write(logMsg) error
 }
 
 type RecorderID string
@@ -287,7 +287,9 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *logMsg) error {
 			if (*msg).severity == 0 { panic("xlog: msg.sev = 0") } // TODO: remove, not here
 			if sev & (*msg).severity > 0 {
 				if rec, exist := L.recorders[recID]; exist {
-					rec.write(*msg) // <---
+					if err := rec.write(*msg); err != nil { // <---
+						return err
+					}
 				} else {
 					panic("xlog: recorder id can't be found in registered recorders map")
 				}

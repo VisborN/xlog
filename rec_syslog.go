@@ -35,8 +35,8 @@ func (R *syslogRecorder) FormatFunc(f FormatFunc) *syslogRecorder {
 }
 
 // this function can invoke panic on critical error (unreachable)
-func (R *syslogRecorder) write(msg logMsg) {
-	if !R.initialised { return }
+func (R *syslogRecorder) write(msg logMsg) error {
+	if !R.initialised { return NotInitialised }
 	msgData := msg.content
 	if R.format != nil {
 		msgData = R.format(msg)

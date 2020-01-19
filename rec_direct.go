@@ -35,14 +35,13 @@ func (R *ioDirectRecorder) FormatFunc(f FormatFunc) *ioDirectRecorder {
 	R.format = f; return R
 }
 
-// this function can write to stderr in case of error
-func (R *ioDirectRecorder) write(msg logMsg) {
-	if !R.initialised { return }
+func (R *ioDirectRecorder) write(msg logMsg) error {
+	if !R.initialised { return NotInitialised }
 	msgData := msg.content
 	if R.format != nil {
 		msgData = R.format(msg)
 	}
 	if _, err := R.writer.Write([]byte(msgData)); err != nil {
-		fmt.Fprintf(os.Stderr, "xlog.ioDirectRecorder: writer error (%s)", err)
+		return fmt.Errorf("writer error: %s", err.Error())
 	}
 }
