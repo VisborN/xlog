@@ -30,7 +30,7 @@ type LogMsg struct {
 	time time.Time
 	severity uint16
 	content string
-	data interface{}
+	Data interface{}
 }
 
 // NewLogMsg allocates and returns a new LogMsg. 
@@ -72,6 +72,10 @@ func (LM *LogMsg) AddLn(msgFmt string, msgArgs ...interface{}) *LogMsg {
 func (LM *LogMsg) Set(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	LM.content = fmt.Sprintf(msgFmt, msgArgs...); return LM
 }
+
+func (LM *LogMsg) GetTime() time.Time { return LM.time }
+func (LM *LogMsg) GetSeverity() uint16 { return LM.severity }
+func (LM *LogMsg) GetContent() string { return LM.content }
 
 // -----------------------------------------------------------------------------
 
