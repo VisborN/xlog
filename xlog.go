@@ -26,62 +26,62 @@ const SeverityAll   uint16 = 0xFF
 const SeverityMajor uint16 = 0x0F
 const SeverityMinor uint16 = 0xF0
 
-type logMsg struct {
+type LogMsg struct {
 	time time.Time
 	severity uint16
 	content string
 	data interface{}
 }
 
-// NewLogMsg allocates and returns a new logMsg. 
-func NewLogMsg() *logMsg {
-	lm := new(logMsg)
+// NewLogMsg allocates and returns a new LogMsg. 
+func NewLogMsg() *LogMsg {
+	lm := new(LogMsg)
 	lm.time = time.Now()
 	return lm
 }
 
-// LogMsg builds and returns simple message with undefined severity.
-func LogMsg(msgFmt string, msgArgs ...interface{}) *logMsg {
-	lm := new(logMsg)
+// Message builds and returns simple message with undefined severity.
+func Message(msgFmt string, msgArgs ...interface{}) *LogMsg {
+	lm := new(LogMsg)
 	lm.time = time.Now()
 	lm.content = fmt.Sprintf(msgFmt, msgArgs...)
 	return lm
 }
 
 // Severity sets severity value for the message.
-func (LM *logMsg) Severity(severity uint16) *logMsg {
+func (LM *LogMsg) Severity(severity uint16) *LogMsg {
 	LM.severity = severityProtector(severity); return LM
 }
 
 // UpdateTime updates message's time to current time.
-func (LM *logMsg) UpdateTime() *logMsg {
+func (LM *LogMsg) UpdateTime() *LogMsg {
 	LM.time = time.Now(); return LM
 }
 
 // Add attaches new string to the end of the existing messages text.
-func (LM *logMsg) Add(msgFmt string, msgArgs ...interface{}) *logMsg {
+func (LM *LogMsg) Add(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	LM.content += fmt.Sprintf(msgFmt, msgArgs...); return LM
 }
 
 // AddLn adds new string to existing message text as a new line.
-func (LM *logMsg) AddLn(msgFmt string, msgArgs ...interface{}) *logMsg {
+func (LM *LogMsg) AddLn(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	LM.content += "\n" + fmt.Sprintf(msgFmt, msgArgs...); return LM
 }
 
 // Set resets current message's text and sets the given string.
-func (LM *logMsg) Set(msgFmt string, msgArgs ...interface{}) *logMsg {
+func (LM *LogMsg) Set(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	LM.content = fmt.Sprintf(msgFmt, msgArgs...); return LM
 }
 
 // -----------------------------------------------------------------------------
 
-type FormatFunc func(*logMsg) string
+type FormatFunc func(*LogMsg) string
 
 type logRecorder interface {
 	initialise() error
 	//isInitialised() bool
 	close()
-	write(logMsg) error
+	write(LogMsg) error
 }
 
 type RecorderID string
@@ -264,7 +264,7 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags uint16) error {
 }
 
 // Write builds the message with format line and specified severity flag, then calls
-// WriteMsg. It allows avoiding calling fmt.Sprintf() function and logMsg's functions
+// WriteMsg. It allows avoiding calling fmt.Sprintf() function and LogMsg's functions
 // directly, it wraps them. Returns nil in case of success otherwise returns an error.
 func (L *Logger) Write(severity uint16, msgFmt string, msgArgs ...interface{}) error {
 	msg := NewLogMsg().Severity(severity)
@@ -279,7 +279,7 @@ func (L *Logger) Write(severity uint16, msgFmt string, msgArgs ...interface{}) e
 // This function can invoke panic in case of critical errors (usually unreachable).
 //
 // TODO: additional log/outp notifications at errors
-func (L *Logger) WriteMsg(recorders []RecorderID, msg *logMsg) error {
+func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 	if L.recorders == nil { return NoRecordersError }
 	if len(recorders) == 0 && len(L.defaults) == 0 {
 		return errors.New(

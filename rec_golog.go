@@ -48,7 +48,7 @@ func (R *gologRecorder) OnClose(f func(interface{})) *gologRecorder {
 	R.closer = f; return R
 }
 
-func (R *gologRecorder) write(msg logMsg) error {
+func (R *gologRecorder) write(msg LogMsg) error {
 	if !R.initialised { return NotInitialised }
 	msgData := msg.content
 	if R.format != nil {
@@ -58,7 +58,7 @@ func (R *gologRecorder) write(msg logMsg) error {
 	return nil
 }
 
-func GologDefaultFormatter(msg *logMsg) string {
+func GologDefaultFormatter(msg *LogMsg) string {
 	var sevPrefix string
 	switch msg.severity {
 	case Critical: sevPrefix = "CRITICAL"
