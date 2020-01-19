@@ -9,6 +9,7 @@ type ioDirectRecorder struct {
 	initialised bool
 	format      FormatFunc
 	writer      io.Writer
+	closer      func(interface{})
 }
 
 // NewIoDirectRecorder allocates and returns a new io direct recorder.
@@ -26,12 +27,17 @@ func (R *ioDirectRecorder) initialise() error {
 }
 
 func (R *ioDirectRecorder) close() {
+	if R.closer != nil { R.closer(nil) }
 	R.initialised = false
 }
 
 // FormatFunc sets custom formatter function for this recorder.
 func (R *ioDirectRecorder) FormatFunc(f FormatFunc) *ioDirectRecorder {
 	R.format = f; return R
+}
+
+func (R *ioDirectRecorder) OnClose(f func(interface{})) *ioDirectRecorder {
+	R.closer = f; return R
 }
 
 func (R *ioDirectRecorder) write(msg logMsg) error {
