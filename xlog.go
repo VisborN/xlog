@@ -70,7 +70,7 @@ func (LM *logMsg) Set(msgFmt string, msgArgs ...interface{}) *logMsg {
 
 // -----------------------------------------------------------------------------
 
-type FormatFunc func(logMsg) string
+type FormatFunc func(*logMsg) string
 
 type logRecorder interface {
 	initialise() error

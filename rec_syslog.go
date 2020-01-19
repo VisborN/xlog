@@ -39,7 +39,7 @@ func (R *syslogRecorder) write(msg logMsg) error {
 	if !R.initialised { return NotInitialised }
 	msgData := msg.content
 	if R.format != nil {
-		msgData = R.format(msg)
+		msgData = R.format(&msg)
 	}
 	switch msg.severity {
 	case Critical: R.logger.Crit(msgData)

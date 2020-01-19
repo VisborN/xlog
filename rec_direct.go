@@ -39,7 +39,7 @@ func (R *ioDirectRecorder) write(msg logMsg) error {
 	if !R.initialised { return NotInitialised }
 	msgData := msg.content
 	if R.format != nil {
-		msgData = R.format(msg)
+		msgData = R.format(&msg)
 	}
 	if _, err := R.writer.Write([]byte(msgData)); err != nil {
 		return fmt.Errorf("writer error: %s", err.Error())
