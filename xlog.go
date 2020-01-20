@@ -61,7 +61,7 @@ func Message(msgFmt string, msgArgs ...interface{}) *LogMsg {
 
 // Severity sets severity value for the message.
 func (LM *LogMsg) Severity(severity uint16) *LogMsg {
-	LM.severity = severityProtector(severity); return LM
+	LM.severity = severity &^ severityShadowMask; return LM
 }
 
 // UpdateTime updates message's time to current time.
@@ -370,10 +370,13 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 		recorders = L.defaults
 	}
 
+	(*msg).severity = L.severityProtector((*msg).severity)
+	if (*msg).severity == 0 { (*msg).severity = Info }
+
 	for _, recID := range recorders {
 		if sevMask, exist := L.severityMasks[recID]; exist {
 			if sevMask == 0 { return fmt.Errorf("severity mask is 0") }
-			if (*msg).severity == 0 { panic("xlog: msg.sev = 0") } // TODO: remove
+			if (*msg).severity == 0 { panic("xlog: severity is 0") }
 			if (*msg).severity & sevMask > 0 {
 				if rec, exist := L.recorders[recID]; exist {
 					if err := rec.write(*msg); err != nil { // <---
