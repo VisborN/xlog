@@ -4,7 +4,17 @@ import (
 	"fmt"
 	"time"
 	"errors"
+	"container/list"
 )
+
+/*  xlog message flags
+
+    xxxx xxxx xxxx xxxx
+    -+-- --+- ----+----
+     |     |      |
+attributes |  defeult severity flags
+        custom severity flags
+*/
 
 const ( // severity flags (log level)
 	Critical uint16 = 0x01 // 0000 0000 0000 0001
@@ -18,9 +28,9 @@ const ( // severity flags (log level)
 )
 
 // bit-reset (reversed) mask for severity flags
-const severityShadowMask uint16 = 0xFF00
+const severityShadowMask uint16 = 0xF000
 // bit-reset (reversed) mask for attribute flags
-const attributeShadowMask uint16 = 0xFF00
+const attributeShadowMask uint16 = 0x0FFF
 
 const SeverityAll   uint16 = 0xFF
 const SeverityMajor uint16 = 0x0F
@@ -95,6 +105,27 @@ type Logger struct {
 	recorders map[RecorderID]logRecorder
 	severityMasks map[RecorderID]uint16 // determines what severities each recorder will write
 	defaults []RecorderID // list of default recorders
+	severityOrder *list.List
+}
+
+// NewLogger allocates and returns a new logger.
+func NewLogger() *Logger {
+	l := new(Logger)
+	l.recorders = make(map[RecorderID]logRecorder)
+	l.severityMasks = make(map[RecorderID]uint16)
+	l.severityOrder = list.New().Init()
+
+	// default order
+	l.severityOrder.PushBack(Critical)
+	l.severityOrder.PushBack(Error)
+	l.severityOrder.PushBack(Warning)
+	l.severityOrder.PushBack(Notice)
+	l.severityOrder.PushBack(Info)
+	l.severityOrder.PushBack(Debug1)
+	l.severityOrder.PushBack(Debug2)
+	l.severityOrder.PushBack(Debug3)
+
+	return l
 }
 
 // The same as RegisterRecorderEx, but adds recorder to defaults automatically.
@@ -109,8 +140,8 @@ func (L *Logger) RegisterRecorder(id RecorderID, recorder logRecorder) bool {
 //
 // This function can panic if it found a critical error in the logger data.
 func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logRecorder) bool {
-	// this function should initialise all related maps
-	// other functions will panic in case of nil-map
+	// this function should configure all related fields
+	// other functions will panic if they meet a unexpected data
 
 	if L.recorders == nil {
 		L.recorders = make(map[RecorderID]logRecorder)
@@ -249,6 +280,36 @@ func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
 	return nil
 }
 
+const ssBefore = true
+const ssAfter = false
+
+// CustomSeverityFlag inserts a user defined severity flag in the ordered list.
+func (L *Logger) CutomSeverityFlag(newFlag uint16, before bool, relFlag uint16) error {
+	newFlag = newFlag &^ 0xF0FF
+	if newFlag == 0 {
+		return errors.New("wrong flag value")
+	}
+
+	e := L.severityOrder.Front()
+	for ; e != nil; e = e.Next() {
+		if sev, ok := e.Value.(uint16); !ok {
+			if sev == relFlag { break }
+		} else {
+			panic("xlog: severityOrder, type is invalid")
+		}
+	}
+	if e != nil {
+		return fmt.Errorf("can't find flag (%b) in the list", relFlag)
+	}
+
+	if before {
+		L.severityOrder.InsertBefore(newFlag, e)
+	} else {
+		L.severityOrder.InsertAfter(newFlag, e)
+	}
+	return nil
+}
+
 // SetSeverityMask sets which severities allowed for the given recorder in this logger.
 func (L *Logger) SetSeverityMask(recorder RecorderID, flags uint16) error {
 	if L.recorders == nil { return NoRecordersError }
@@ -336,14 +397,13 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 // a severity argument should have only one of these flags. So it ensures
 // (accordingly to the depth order) that severity value provide only one
 // flag.
-func severityProtector(sev uint16) uint16 {
-	if sev & Critical > 0 { return Critical }
-	if sev & Error    > 0 { return Error }
-	if sev & Warning  > 0 { return Warning }
-	if sev & Notice   > 0 { return Notice }
-	if sev & Info     > 0 { return Info }
-	if sev & Debug1   > 0 { return Debug1 }
-	if sev & Debug2   > 0 { return Debug2 }
-	if sev & Debug3   > 0 { return Debug3 }
+func (L *Logger) severityProtector(flags uint16) uint16 {
+	for e := L.severityOrder.Front(); e != nil; e = e.Next() {
+		if sev, ok := e.Value.(uint16); ok {
+			if flags & sev > 0 { return sev }
+		} else {
+			panic("xlog: severityOrder, type is invalid")
+		}
+	}
 	return 0
 }

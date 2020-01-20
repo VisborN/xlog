@@ -6,7 +6,7 @@ import (
 )
 
 func TestGeneral(t *testing.T) {
-	logger := Logger{}
+	logger := NewLogger()
 	logger.RegisterRecorder("syslog", NewSyslogRecorder("xlog-test"))
 	logger.RegisterRecorder("stdout", NewIoDirectRecorder(os.Stdout))
 	if logFile, err :=os.OpenFile("test-general.log",
@@ -28,8 +28,8 @@ func TestGeneral(t *testing.T) {
 }
 
 func TestMultipleLoggers(t *testing.T) {
-	logger1 := Logger{}
-	logger2 := Logger{}
+	logger1 := NewLogger()
+	logger2 := NewLogger()
 	syslog := NewSyslogRecorder("xlog-test")
 	logger1.RegisterRecorder("syslog", syslog)
 	logger2.RegisterRecorder("syslog", syslog)
