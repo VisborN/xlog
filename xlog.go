@@ -184,9 +184,10 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 // InitialisationError.ErrorInAll. If it has false value, it means that
 // some of the recorders have been initialised.
 func (L *Logger) Initialise() error {
-	if L.recorders == nil {
-		return NoRecordersError
+	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
+		panic("xlog: bumped to nil")
 	}
+	if len(L.recorders) == 0 { return NoRecordersError }
 
 	e := errInitialisationError()
 	for id, rec := range L.recorders {
@@ -204,7 +205,11 @@ func (L *Logger) Initialise() error {
 
 // Close calls closing functions of each registered recorder.
 func (L *Logger) Close() {
-	if L.recorders == nil { return }
+	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
+		//panic("xlog: bumped to nil")
+		return
+	}
+	if len(L.recorders) == 0 { return }
 	for _, rec := range L.recorders {
 		rec.close()
 	}
@@ -215,7 +220,10 @@ func (L *Logger) Close() {
 // (The default recorders list determinate which recorders will use for
 // writing if custom recorders are not specified in the log message.)
 func (L *Logger) AddToDefaults(recorders []RecorderID) error {
-	if L.recorders == nil { return NoRecordersError }
+	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
+		panic("xlog: bumped to nil")
+	}
+	if len(L.recorders) == 0 { return NoRecordersError }
 
 	// check registered recorders
 	notRegisteredErr := RecordersError{
@@ -251,7 +259,10 @@ main_iter:
 // (The default recorders list determinate which recorders will use for
 // writing if custom recorders are not specified in the log message.)
 func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
-	if L.recorders == nil { return NoRecordersError }
+	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
+		panic("xlog: bumped to nil")
+	}
+	if len(L.recorders) == 0 { return NoRecordersError }
 
 	// check registered recorders
 	notRegisteredErr := RecordersError{
@@ -312,7 +323,10 @@ func (L *Logger) CutomSeverityFlag(newFlag uint16, before bool, relFlag uint16) 
 
 // SetSeverityMask sets which severities allowed for the given recorder in this logger.
 func (L *Logger) SetSeverityMask(recorder RecorderID, flags uint16) error {
-	if L.recorders == nil { return NoRecordersError }
+	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
+		panic("xlog: bumped to nil")
+	}
+	if len(L.recorders) == 0 { return NoRecordersError }
 	if sevMask, exist := L.severityMasks[recorder]; !exist {
 		if _, exist := L.recorders[recorder]; !exist {
 			return RecordersError{ []RecorderID{recorder},
@@ -346,8 +360,11 @@ func (L *Logger) Write(severity uint16, msgFmt string, msgArgs ...interface{}) e
 //
 // TODO: additional log/outp notifications at errors
 func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
-	if L.recorders == nil { return NoRecordersError }
-	if len(recorders) == 0 && len(L.defaults) == 0 {
+	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
+		panic("xlog: bumped to nil")
+	}
+	if len(L.recorders) == 0 { return NoRecordersError }
+	if len(L.defaults) == 0 && len(recorders) == 0 {
 		return errors.New(
 			"the logger has no default recorders, "+
 			"but custom recorders are not specified")
@@ -394,13 +411,14 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 	return nil
 }
 
-// -----------------------------------------------------------------------------
-
 // This function actually has got a protector role because in some places
 // a severity argument should have only one of these flags. So it ensures
 // (accordingly to the depth order) that severity value provide only one
 // flag.
 func (L *Logger) severityProtector(flags uint16) uint16 {
+	if L.severityOrder == nil {
+		panic("xlog: bumped to nil")
+	}
 	for e := L.severityOrder.Front(); e != nil; e = e.Next() {
 		if sev, ok := e.Value.(uint16); ok {
 			if flags & sev > 0 { return sev }
