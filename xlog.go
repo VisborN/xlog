@@ -25,6 +25,7 @@ const attributeShadowMask uint16 = 0xFF00
 const SeverityAll   uint16 = 0xFF
 const SeverityMajor uint16 = 0x0F
 const SeverityMinor uint16 = 0xF0
+const SeverityDebug uint16 = 0xE0
 
 type LogMsg struct {
 	time time.Time
