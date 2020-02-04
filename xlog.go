@@ -38,10 +38,11 @@ const severityShadowMask uint16 = 0xF000
 const attributeShadowMask uint16 = 0x0FFF
 
 // predifined severity sets (utility)
-const SeverityAll   uint16 = 0xFF
-const SeverityMajor uint16 = 0x0F
-const SeverityMinor uint16 = 0xF0
-const SeverityDebug uint16 = 0xE0
+const SeverityAll    uint16 = 0xFFF
+const SeverityMajor  uint16 = 0x00F
+const SeverityMinor  uint16 = 0x0F0
+const SeverityDebug  uint16 = 0x0E0
+const SeverityCustom uint16 = 0xF00
 
 // ssDirection describes two-way directions.
 // It primarily used in severity order lists.
@@ -81,24 +82,24 @@ func (LM *LogMsg) UpdateTime() *LogMsg {
 	LM.time = time.Now(); return LM
 }
 
-// Add attaches new string to the end of the existing messages text.
-func (LM *LogMsg) Add(msgFmt string, msgArgs ...interface{}) *LogMsg {
+// Add attaches new string to the end of the existing message text.
+func (LM *LogMsg) Addf(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	LM.content += fmt.Sprintf(msgFmt, msgArgs...); return LM
 }
 
-// AddLn adds new string to existing message text as a new line.
-func (LM *LogMsg) AddLn(msgFmt string, msgArgs ...interface{}) *LogMsg {
+// Addln adds new string to existing message text as a new line.
+func (LM *LogMsg) Addf_ln(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	LM.content += "\n" + fmt.Sprintf(msgFmt, msgArgs...); return LM
 }
 
-// Set resets current message's text and sets the given string.
-func (LM *LogMsg) Set(msgFmt string, msgArgs ...interface{}) *LogMsg {
+// Set resets current message text and sets the given string.
+func (LM *LogMsg) Setf(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	LM.content = fmt.Sprintf(msgFmt, msgArgs...); return LM
 }
 
-func (LM *LogMsg) GetTime() time.Time { return LM.time }
-func (LM *LogMsg) GetSeverity() uint16 { return LM.severity }
-func (LM *LogMsg) GetContent() string { return LM.content }
+func (LM *LogMsg) GetTime()     time.Time { return LM.time }
+func (LM *LogMsg) GetSeverity() uint16    { return LM.severity }
+func (LM *LogMsg) GetContent()  string    { return LM.content }
 
 // -----------------------------------------------------------------------------
 
@@ -375,10 +376,11 @@ func (L *Logger) ChangeSeverityOrder(
 
 // SetSeverityMask sets which severities allowed for the given recorder in this logger.
 func (L *Logger) SetSeverityMask(recorder RecorderID, flags uint16) error {
-	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
+	if L.recorders == nil || L.severityMasks == nil {
 		panic("xlog: bumped to nil")
 	}
 	if len(L.recorders) == 0 { return NoRecordersError }
+
 	if sevMask, exist := L.severityMasks[recorder]; !exist {
 		if _, exist := L.recorders[recorder]; !exist {
 			return RecordersError{ []RecorderID{recorder},
@@ -392,6 +394,7 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags uint16) error {
 		// zero is allowed (recorder blocked)
 		sevMask = flags &^ severityShadowMask
 	}
+
 	return nil
 }
 
@@ -407,8 +410,6 @@ func (L *Logger) Write(severity uint16, msgFmt string, msgArgs ...interface{}) e
 // WriteMsg writes given message using the specified recorders of this logger.
 // If custom recorders are not specified, uses default recorders. Returns nil
 // on success and error on fail.
-//
-// This function can invoke panic in case of critical errors (usually unreachable).
 //
 // TODO: additional log/outp notifications at errors
 func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
@@ -455,7 +456,7 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 					panic("xlog: recorder id can't be found in registered recorders map")
 				}
 			}
-			} else {
+		} else {
 			panic("xlog: recorder id can't be found in severity masks map")
 		}
 	}
@@ -467,16 +468,16 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 // a severity argument should have only one of these flags. So it ensures
 // (accordingly to the depth order) that severity value provide only one
 // flag.
-func (L *Logger) severityProtector(flags uint16) uint16 {
-	if L.severityOrder == nil {
-		panic("xlog: bumped to nil")
-	}
-	for e := L.severityOrder.Front(); e != nil; e = e.Next() {
+func (L *Logger) severityProtector(orderlist *list.List, flags uint16) uint16 {
+	if orderlist == nil { panic("xlog: severityProtector, wrong parameter") }
+	if orderlist.Len() == 0 { panic("xlog: orderlist zero length") }
+	for e := orderlist.Front(); e != nil; e = e.Next() {
 		if sev, ok := e.Value.(uint16); ok {
 			if flags & sev > 0 { return sev }
 		} else {
 			panic("xlog: severityOrder, type is invalid")
 		}
 	}
+	//panic("xlog: severityProtector, can't find severity flag in orderlist")
 	return 0
 }
