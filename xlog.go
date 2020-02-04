@@ -295,7 +295,7 @@ const ssBefore = true
 const ssAfter = false
 
 // CustomSeverityFlag inserts a user defined severity flag in the ordered list.
-func (L *Logger) CutomSeverityFlag(newFlag uint16, before bool, relFlag uint16) error {
+func (L *Logger) CustomSeverityFlag(newFlag uint16, relFlag uint16, before ...bool) error {
 	newFlag = newFlag &^ 0xF0FF
 	if newFlag == 0 {
 		return errors.New("wrong flag value")
@@ -313,11 +313,12 @@ func (L *Logger) CutomSeverityFlag(newFlag uint16, before bool, relFlag uint16) 
 		return fmt.Errorf("can't find flag (%b) in the list", relFlag)
 	}
 
-	if before {
+	if len(before) >= 1 && before[0] {
 		L.severityOrder.InsertBefore(newFlag, e)
 	} else {
 		L.severityOrder.InsertAfter(newFlag, e)
 	}
+
 	return nil
 }
 
