@@ -17,14 +17,19 @@ attributes |  defeult severity flags
 */
 
 const ( // severity flags (log level)
-	Critical uint16 = 0x01 // 0000 0000 0000 0001
-	Error    uint16 = 0x02 // 0000 0000 0000 0010
-	Warning  uint16 = 0x04 // 0000 0000 0000 0100
-	Notice   uint16 = 0x08 // 0000 0000 0000 1000
-	Info     uint16 = 0x10 // 0000 0000 0001 0000
-	Debug1   uint16 = 0x20 // 0000 0000 0010 0000
-	Debug2   uint16 = 0x40 // 0000 0000 0100 0000
-	Debug3   uint16 = 0x80 // 0000 0000 1000 0000
+	Critical uint16 = 0x01  // 0000 0000 0000 0001
+	Error    uint16 = 0x02  // 0000 0000 0000 0010
+	Warning  uint16 = 0x04  // 0000 0000 0000 0100
+	Notice   uint16 = 0x08  // 0000 0000 0000 1000
+	Info     uint16 = 0x10  // 0000 0000 0001 0000
+	Debug1   uint16 = 0x20  // 0000 0000 0010 0000
+	Debug2   uint16 = 0x40  // 0000 0000 0100 0000
+	Debug3   uint16 = 0x80  // 0000 0000 1000 0000
+
+	Custom1  uint16 = 0x100 // 0000 0001 0000 0000
+	Custom2  uint16 = 0x200 // 0000 0010 0000 0000
+	Custom3  uint16 = 0x300 // 0000 0100 0000 0000
+	Custom4  uint16 = 0x400 // 0000 1000 0000 0000
 )
 
 // bit-reset (reversed) mask for severity flags
@@ -32,10 +37,17 @@ const severityShadowMask uint16 = 0xF000
 // bit-reset (reversed) mask for attribute flags
 const attributeShadowMask uint16 = 0x0FFF
 
+// predifined severity sets (utility)
 const SeverityAll   uint16 = 0xFF
 const SeverityMajor uint16 = 0x0F
 const SeverityMinor uint16 = 0xF0
 const SeverityDebug uint16 = 0xE0
+
+// ssDirection describes two-way directions.
+// It primarily used in severity order lists.
+type ssDirection bool
+const Before ssDirection = true
+const After ssDirection = false
 
 type LogMsg struct {
 	time time.Time
@@ -103,9 +115,15 @@ type RecorderID string
 
 type Logger struct {
 	recorders map[RecorderID]logRecorder
-	severityMasks map[RecorderID]uint16 // determines what severities each recorder will write
+
+	// determines what severities each recorder will write
+	severityMasks map[RecorderID]uint16
+
 	defaults []RecorderID // list of default recorders
-	severityOrder *list.List
+	// TODO: description
+
+	// determines severity order for each recorder
+	severityOrder map[RecorderID]*list.List
 }
 
 // NewLogger allocates and returns a new logger.
@@ -113,18 +131,7 @@ func NewLogger() *Logger {
 	l := new(Logger)
 	l.recorders = make(map[RecorderID]logRecorder)
 	l.severityMasks = make(map[RecorderID]uint16)
-	l.severityOrder = list.New().Init()
-
-	// default order
-	l.severityOrder.PushBack(Critical)
-	l.severityOrder.PushBack(Error)
-	l.severityOrder.PushBack(Warning)
-	l.severityOrder.PushBack(Notice)
-	l.severityOrder.PushBack(Info)
-	l.severityOrder.PushBack(Debug1)
-	l.severityOrder.PushBack(Debug2)
-	l.severityOrder.PushBack(Debug3)
-
+	l.severityOrder = make(map[RecorderID]*list.List)
 	return l
 }
 
@@ -152,7 +159,7 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 	}
 	L.recorders[id] = recorder
 
-	// recorder works on all severities by default
+	// recorder works with all severities by default
 	if L.severityMasks == nil {
 		L.severityMasks = make(map[RecorderID]uint16)
 	}
@@ -169,6 +176,22 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 	if asDefault {
 		L.defaults = append(L.defaults, id)
 	}
+
+	// setup severity order for this recorder
+	L.severityOrder[id] = list.New().Init()
+	// default severity order (up to down)
+	L.severityOrder[id].PushBack(Critical)
+	L.severityOrder[id].PushBack(Error)
+	L.severityOrder[id].PushBack(Warning)
+	L.severityOrder[id].PushBack(Notice)
+	L.severityOrder[id].PushBack(Info)
+	L.severityOrder[id].PushBack(Debug1)
+	L.severityOrder[id].PushBack(Debug2)
+	L.severityOrder[id].PushBack(Debug3)
+	L.severityOrder[id].PushBack(Custom1)
+	L.severityOrder[id].PushBack(Custom2)
+	L.severityOrder[id].PushBack(Custom3)
+	L.severityOrder[id].PushBack(Custom4)
 
 	return true
 }
@@ -291,33 +314,61 @@ func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
 	return nil
 }
 
-const ssBefore = true
-const ssAfter = false
+// ChangeSeverityOrder changes severity order for the specified
+// recorder. It takes specified flag and moves it before/after
+// the target flag position. Only custom flags can be moved.
+//
+// The function returns nil on success and error overwise.
+func (L *Logger) ChangeSeverityOrder(
+	recorder RecorderID, srcFlag uint16, dir ssDirection, trgFlag uint16,
+) error {
 
-// CustomSeverityFlag inserts a user defined severity flag in the ordered list.
-func (L *Logger) CustomSeverityFlag(newFlag uint16, relFlag uint16, before ...bool) error {
-	newFlag = newFlag &^ 0xF0FF
+	if len(L.recorders) == 0 { return NoRecordersError }
+	if _, exist := L.recorders[recorder]; !exist {
+		return RecordersError{ []RecorderID{recorder},
+			fmt.Errorf("the recorder '%s' is not registered", recorder),
+		}
+	}
+
+	// only custom flags are moveable
+	newFlag = srcFlag &^ 0xF0FF
 	if newFlag == 0 {
 		return errors.New("wrong flag value")
 	}
 
-	e := L.severityOrder.Front()
-	for ; e != nil; e = e.Next() {
-		if sev, ok := e.Value.(uint16); !ok {
-			if sev == relFlag { break }
-		} else {
-			panic("xlog: severityOrder, type is invalid")
-		}
-	}
-	if e != nil {
-		return fmt.Errorf("can't find flag (%b) in the list", relFlag)
-	}
-
-	if len(before) >= 1 && before[0] {
-		L.severityOrder.InsertBefore(newFlag, e)
+	if orderlist, exist := L.severityOrder[recorder]; !exist {
+		panic("xlog: recorder id can't be found in severity order map")
 	} else {
-		L.severityOrder.InsertAfter(newFlag, e)
-	}
+		var src *list.Element
+		var trg *list.Element
+		for e := orderlist.Front(); e != nil; e = e.Next() {
+			if sev, ok := e.Value.(uint16); !ok {
+				panic("xlog: severityOrder, type is invalid")
+			} else {
+				if sev == srcFlag { src = e
+					if trg != nil { break }
+				}
+				if sev == trgFlag { trg = e
+					if src != nil { break }
+				}
+			}
+		}
+
+		// unreachable, all flags should be described
+		if src == nil {
+			return fmt.Errorf("can't find flag (%b) in the list", srcFlag)
+		}
+		if trg == nil {
+			return fmt.Errorf("can't find flag (%b) in the list", trgFlag)
+		}
+
+		// change order
+		if dir == Before {
+			L.severityOrder[recorder].MoveBefore(src, trg)
+		} else { // After
+			L.severityOrder[recorder].MoveAfter(src, trg)
+		}
+	}	
 
 	return nil
 }
