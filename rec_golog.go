@@ -8,6 +8,7 @@ import (
 
 type gologRecorder struct {
 	initialised bool
+	refCounter  int
 	prefix      string
 	format      FormatFunc
 	writer      io.Writer
@@ -22,20 +23,25 @@ func NewGologRecorder(writer io.Writer, prefix string) *gologRecorder {
 	r.format = GologDefaultFormatter
 	r.prefix = prefix + " "
 	r.writer = writer
+	r.refCounter = 0
 	return r
 }
 
 func (R *gologRecorder) initialise() error {
-	if R.initialised { return nil }
-	R.Logger = log.New(R.writer, R.prefix, log.LstdFlags)
-	R.initialised = true
+	if !R.initialised {
+		R.Logger = log.New(R.writer, R.prefix, log.LstdFlags)
+		R.initialised = true
+	}
+	R.refCounter++
 	return nil
 }
 
 func (R *gologRecorder) close() {
 	if !R.initialised { return }
-	if R.closer != nil { R.closer(nil) }
-	R.initialised = false
+	if R.refCounter == 1 {
+		if R.closer != nil { R.closer(nil) }
+		R.initialised = false
+	}; R.refCounter--
 }
 
 // FormatFunc sets custom formatter function for this recorder.

@@ -115,6 +115,10 @@ type logRecorder interface {
 type RecorderID string
 
 type Logger struct {
+	initialised bool // init falg
+	// We must sure that functions init/close doesn't call successively.
+	// In any other case, we can have problems with reference counters calculations.
+
 	recorders map[RecorderID]logRecorder
 
 	// determines what severities each recorder will write
@@ -208,6 +212,7 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 // InitialisationError.ErrorInAll. If it has false value, it means that
 // some of the recorders have been initialised.
 func (L *Logger) Initialise() error {
+	if L.initialised { return nil } // already initialised
 	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
 		panic("xlog: bumped to nil")
 	}
@@ -224,11 +229,13 @@ func (L *Logger) Initialise() error {
 		return e
 	}
 
+	L.initialised = true
 	return nil
 }
 
 // Close calls closing functions of each registered recorder.
 func (L *Logger) Close() {
+	if !L.initialised { return } // not initialised currently
 	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
 		//panic("xlog: bumped to nil")
 		return
@@ -237,6 +244,7 @@ func (L *Logger) Close() {
 	for _, rec := range L.recorders {
 		rec.close()
 	}
+	L.initialised = false
 }
 
 // AddToDefaults adds given recorders to defaults in that logger.

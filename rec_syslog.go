@@ -5,6 +5,7 @@ import "log/syslog"
 
 type syslogRecorder struct {
 	initialised bool
+	refCounter  int
 	prefix      string
 	format      FormatFunc
 	logger      *syslog.Writer
@@ -16,6 +17,7 @@ type syslogRecorder struct {
 // NewSyslogRecorder allocates and returns a new syslog recorder.
 func NewSyslogRecorder(prefix string) *syslogRecorder {
 	r := new(syslogRecorder)
+	r.refCounter = 0
 	r.prefix = prefix
 	r.sevBindings = make(map[uint16]syslogSeverity)
 
@@ -61,17 +63,21 @@ func (R *syslogRecorder) BindSeverityFlag(severity uint16, priority syslog.Prior
 }
 
 func (R *syslogRecorder) initialise() error {
-	if R.initialised { return nil }; var err error
-	R.logger, err = syslog.New(syslog.LOG_INFO | syslog.LOG_USER, R.prefix)
-	if err != nil { return err }
-	R.initialised = true
+	if !R.initialised { var err error
+		R.logger, err = syslog.New(syslog.LOG_INFO | syslog.LOG_USER, R.prefix)
+		if err != nil { return err }
+		R.initialised = true
+	}
+	R.refCounter++
 	return nil
 }
 
 func (R *syslogRecorder) close() {
 	if !R.initialised { return }
-	R.initialised = false
-	R.logger.Close()
+	if R.refCounter == 1 {
+		R.initialised = false
+		R.logger.Close()
+	}; R.refCounter--
 }
 
 // FormatFunc sets custom formatter function for this recorder.

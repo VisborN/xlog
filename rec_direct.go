@@ -7,6 +7,7 @@ import (
 
 type ioDirectRecorder struct {
 	initialised bool
+	refCounter  int
 	format      FormatFunc
 	writer      io.Writer
 	closer      func(interface{})
@@ -16,20 +17,23 @@ type ioDirectRecorder struct {
 func NewIoDirectRecorder(writer io.Writer) *ioDirectRecorder {
 	r := new(ioDirectRecorder)
 	r.writer = writer
+	r.refCounter = 0
 	return r
 }
 
 // this function never returns a non-nil error
 func (R *ioDirectRecorder) initialise() error {
-	if R.initialised { return nil }
 	R.initialised = true
+	R.refCounter++
 	return nil
 }
 
 func (R *ioDirectRecorder) close() {
 	if !R.initialised { return }
-	if R.closer != nil { R.closer(nil) }
-	R.initialised = false
+	if R.refCounter == 1 {
+		if R.closer != nil { R.closer(nil) }
+		R.initialised = false
+	}; R.refCounter--
 }
 
 // FormatFunc sets custom formatter function for this recorder.
