@@ -340,8 +340,8 @@ func (L *Logger) ChangeSeverityOrder(
 	}
 
 	// only custom flags are moveable
-	newFlag = srcFlag &^ 0xF0FF
-	if newFlag == 0 {
+	srcFlag = srcFlag &^ 0xF0FF
+	if srcFlag == 0 {
 		return errors.New("wrong flag value")
 	}
 
@@ -411,7 +411,7 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags uint16) error {
 // directly, it wraps them. Returns nil in case of success otherwise returns an error.
 func (L *Logger) Write(severity uint16, msgFmt string, msgArgs ...interface{}) error {
 	msg := NewLogMsg().Severity(severity)
-	msg.Set(msgFmt, msgArgs...)
+	msg.Setf(msgFmt, msgArgs...)
 	return L.WriteMsg(nil, msg)
 }
 
@@ -448,10 +448,9 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 		recorders = L.defaults
 	}
 
-	(*msg).severity = L.severityProtector((*msg).severity)
-	if (*msg).severity == 0 { (*msg).severity = Info }
-
 	for _, recID := range recorders {
+		(*msg).severity = L.severityProtector(L.severityOrder[recID], (*msg).severity)
+		if (*msg).severity == 0 { (*msg).severity = Info }
 		if sevMask, exist := L.severityMasks[recID]; exist {
 			if sevMask == 0 { return fmt.Errorf("severity mask is 0") }
 			if (*msg).severity == 0 { panic("xlog: severity is 0") }

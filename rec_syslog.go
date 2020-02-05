@@ -19,7 +19,7 @@ func NewSyslogRecorder(prefix string) *syslogRecorder {
 	r := new(syslogRecorder)
 	r.refCounter = 0
 	r.prefix = prefix
-	r.sevBindings = make(map[uint16]syslogSeverity)
+	r.sevBindings = make(map[uint16]syslog.Priority)
 
 	// default bindings
 	r.sevBindings[Critical] = syslog.LOG_CRIT
@@ -53,8 +53,7 @@ func (R *syslogRecorder) BindSeverityFlag(severity uint16, priority syslog.Prior
 		priority != syslog.LOG_WARNING &&
 		priority != syslog.LOG_NOTICE  &&
 		priority != syslog.LOG_INFO    &&
-		priority != syslog.LOG_DEBUG
-	) {
+		priority != syslog.LOG_DEBUG ) {
 		return errors.New("wrong priority value")
 	}	
 
