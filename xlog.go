@@ -358,7 +358,9 @@ func (L *Logger) ChangeSeverityOrder(
 		}
 	}
 
-	srcFlag = srcFlag &^ 0xF0FF // only custom flags are moveable
+	// DISABLED
+	//srcFlag = srcFlag &^ 0xF0FF // only custom flags are moveable
+
 	if srcFlag == 0 {
 		return errors.New("wrong flag value")
 	}
