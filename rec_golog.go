@@ -69,6 +69,10 @@ func GologDefaultFormatter(msg *LogMsg) string {
 	case Debug1:   sevPrefix = "DEBUG-1"
 	case Debug2:   sevPrefix = "DEBUG-2"
 	case Debug3:   sevPrefix = "DEBUG-3"
+	case Custom1:  sevPrefix = "CUSTOM-1"
+	case Custom2:  sevPrefix = "CUSTOM-2"
+	case Custom3:  sevPrefix = "CUSTOM-3"
+	case Custom4:  sevPrefix = "CUSTOM-4"
 	default: sevPrefix = "<unknown>"
 	}
 	return fmt.Sprintf("%s :: %s", sevPrefix, msg.content)
