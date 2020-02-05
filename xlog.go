@@ -16,33 +16,35 @@ attributes |  defeult severity flags
         custom severity flags
 */
 
-const ( // severity flags (log level)
-	Critical uint16 = 0x01  // 0000 0000 0000 0001
-	Error    uint16 = 0x02  // 0000 0000 0000 0010
-	Warning  uint16 = 0x04  // 0000 0000 0000 0100
-	Notice   uint16 = 0x08  // 0000 0000 0000 1000
-	Info     uint16 = 0x10  // 0000 0000 0001 0000
-	Debug1   uint16 = 0x20  // 0000 0000 0010 0000
-	Debug2   uint16 = 0x40  // 0000 0000 0100 0000
-	Debug3   uint16 = 0x80  // 0000 0000 1000 0000
+type SevFlagT uint16
 
-	Custom1  uint16 = 0x100 // 0000 0001 0000 0000
-	Custom2  uint16 = 0x200 // 0000 0010 0000 0000
-	Custom3  uint16 = 0x300 // 0000 0100 0000 0000
-	Custom4  uint16 = 0x400 // 0000 1000 0000 0000
+const ( // severity flags (log level)
+	Critical SevFlagT = 0x01  // 0000 0000 0000 0001
+	Error    SevFlagT = 0x02  // 0000 0000 0000 0010
+	Warning  SevFlagT = 0x04  // 0000 0000 0000 0100
+	Notice   SevFlagT = 0x08  // 0000 0000 0000 1000
+	Info     SevFlagT = 0x10  // 0000 0000 0001 0000
+	Debug1   SevFlagT = 0x20  // 0000 0000 0010 0000
+	Debug2   SevFlagT = 0x40  // 0000 0000 0100 0000
+	Debug3   SevFlagT = 0x80  // 0000 0000 1000 0000
+
+	Custom1  SevFlagT = 0x100 // 0000 0001 0000 0000
+	Custom2  SevFlagT = 0x200 // 0000 0010 0000 0000
+	Custom3  SevFlagT = 0x300 // 0000 0100 0000 0000
+	Custom4  SevFlagT = 0x400 // 0000 1000 0000 0000
 )
 
 // bit-reset (reversed) mask for severity flags
-const severityShadowMask uint16 = 0xF000
+const severityShadowMask SevFlagT = 0xF000
 // bit-reset (reversed) mask for attribute flags
-const attributeShadowMask uint16 = 0x0FFF
+const attributeShadowMask SevFlagT = 0x0FFF
 
 // predifined severity sets (utility)
-const SeverityAll    uint16 = 0xFFF
-const SeverityMajor  uint16 = 0x00F
-const SeverityMinor  uint16 = 0x0F0
-const SeverityDebug  uint16 = 0x0E0
-const SeverityCustom uint16 = 0xF00
+const SeverityAll    SevFlagT = 0xFFF
+const SeverityMajor  SevFlagT = 0x00F
+const SeverityMinor  SevFlagT = 0x0F0
+const SeverityDebug  SevFlagT = 0x0E0
+const SeverityCustom SevFlagT = 0xF00
 
 // ssDirection describes two-way directions.
 // It primarily used in severity order lists.
@@ -52,7 +54,7 @@ const After ssDirection = false
 
 type LogMsg struct {
 	time time.Time
-	severity uint16
+	severity SevFlagT
 	content string
 	Data interface{}
 }
@@ -73,7 +75,7 @@ func Message(msgFmt string, msgArgs ...interface{}) *LogMsg {
 }
 
 // Severity sets severity value for the message.
-func (LM *LogMsg) Severity(severity uint16) *LogMsg {
+func (LM *LogMsg) Severity(severity SevFlagT) *LogMsg {
 	LM.severity = severity &^ severityShadowMask; return LM
 }
 
@@ -98,7 +100,7 @@ func (LM *LogMsg) Setf(msgFmt string, msgArgs ...interface{}) *LogMsg {
 }
 
 func (LM *LogMsg) GetTime()     time.Time { return LM.time }
-func (LM *LogMsg) GetSeverity() uint16    { return LM.severity }
+func (LM *LogMsg) GetSeverity() SevFlagT    { return LM.severity }
 func (LM *LogMsg) GetContent()  string    { return LM.content }
 
 // -----------------------------------------------------------------------------
@@ -122,7 +124,7 @@ type Logger struct {
 	recorders map[RecorderID]logRecorder
 
 	// determines what severities each recorder will write
-	severityMasks map[RecorderID]uint16
+	severityMasks map[RecorderID]SevFlagT
 
 	defaults []RecorderID // list of default recorders
 	// TODO: description
@@ -135,7 +137,7 @@ type Logger struct {
 func NewLogger() *Logger {
 	l := new(Logger)
 	l.recorders = make(map[RecorderID]logRecorder)
-	l.severityMasks = make(map[RecorderID]uint16)
+	l.severityMasks = make(map[RecorderID]SevFlagT)
 	l.severityOrder = make(map[RecorderID]*list.List)
 	return l
 }
@@ -166,7 +168,7 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 
 	// recorder works with all severities by default
 	if L.severityMasks == nil {
-		L.severityMasks = make(map[RecorderID]uint16)
+		L.severityMasks = make(map[RecorderID]SevFlagT)
 	}
 	L.severityMasks[id] = SeverityAll
 
@@ -329,7 +331,7 @@ func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
 //
 // The function returns nil on success and error overwise.
 func (L *Logger) ChangeSeverityOrder(
-	recorder RecorderID, srcFlag uint16, dir ssDirection, trgFlag uint16,
+	recorder RecorderID, srcFlag SevFlagT, dir ssDirection, trgFlag SevFlagT,
 ) error {
 
 	if len(L.recorders) == 0 { return NoRecordersError }
@@ -351,7 +353,7 @@ func (L *Logger) ChangeSeverityOrder(
 		var src *list.Element
 		var trg *list.Element
 		for e := orderlist.Front(); e != nil; e = e.Next() {
-			if sev, ok := e.Value.(uint16); !ok {
+			if sev, ok := e.Value.(SevFlagT); !ok {
 				panic("xlog: severityOrder, type is invalid")
 			} else {
 				if sev == srcFlag { src = e
@@ -383,7 +385,7 @@ func (L *Logger) ChangeSeverityOrder(
 }
 
 // SetSeverityMask sets which severities allowed for the given recorder in this logger.
-func (L *Logger) SetSeverityMask(recorder RecorderID, flags uint16) error {
+func (L *Logger) SetSeverityMask(recorder RecorderID, flags SevFlagT) error {
 	if L.recorders == nil || L.severityMasks == nil {
 		panic("xlog: bumped to nil")
 	}
@@ -409,7 +411,7 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags uint16) error {
 // Write builds the message with format line and specified severity flag, then calls
 // WriteMsg. It allows avoiding calling fmt.Sprintf() function and LogMsg's functions
 // directly, it wraps them. Returns nil in case of success otherwise returns an error.
-func (L *Logger) Write(severity uint16, msgFmt string, msgArgs ...interface{}) error {
+func (L *Logger) Write(severity SevFlagT, msgFmt string, msgArgs ...interface{}) error {
 	msg := NewLogMsg().Severity(severity)
 	msg.Setf(msgFmt, msgArgs...)
 	return L.WriteMsg(nil, msg)
@@ -475,11 +477,11 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 // a severity argument should have only one of these flags. So it ensures
 // (accordingly to the depth order) that severity value provide only one
 // flag.
-func (L *Logger) severityProtector(orderlist *list.List, flags uint16) uint16 {
+func (L *Logger) severityProtector(orderlist *list.List, flags SevFlagT) SevFlagT {
 	if orderlist == nil { panic("xlog: severityProtector, wrong parameter") }
 	if orderlist.Len() == 0 { panic("xlog: orderlist zero length") }
 	for e := orderlist.Front(); e != nil; e = e.Next() {
-		if sev, ok := e.Value.(uint16); ok {
+		if sev, ok := e.Value.(SevFlagT); ok {
 			if flags & sev > 0 { return sev }
 		} else {
 			panic("xlog: severityOrder, type is invalid")

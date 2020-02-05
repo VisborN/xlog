@@ -11,7 +11,7 @@ type syslogRecorder struct {
 	logger      *syslog.Writer
 
 	// says which function to use for each severity
-	sevBindings map[uint16]syslog.Priority
+	sevBindings map[SevFlagT]syslog.Priority
 }
 
 // NewSyslogRecorder allocates and returns a new syslog recorder.
@@ -19,7 +19,7 @@ func NewSyslogRecorder(prefix string) *syslogRecorder {
 	r := new(syslogRecorder)
 	r.refCounter = 0
 	r.prefix = prefix
-	r.sevBindings = make(map[uint16]syslog.Priority)
+	r.sevBindings = make(map[SevFlagT]syslog.Priority)
 
 	// default bindings
 	r.sevBindings[Critical] = syslog.LOG_CRIT
@@ -40,7 +40,7 @@ func NewSyslogRecorder(prefix string) *syslogRecorder {
 }
 
 // BindSeverityFlag rebinds severity flag to the new syslog priority code.
-func (R *syslogRecorder) BindSeverityFlag(severity uint16, priority syslog.Priority) error {
+func (R *syslogRecorder) BindSeverityFlag(severity SevFlagT, priority syslog.Priority) error {
 	if _, exist := R.sevBindings[severity]; !exist {
 		return errors.New("wrong severity value")
 	}
