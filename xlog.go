@@ -34,6 +34,21 @@ const ( // severity flags (log level)
 	Custom4  SevFlagT = 0x400 // 0000 1000 0000 0000
 )
 
+func (S SevFlagT) String() string {
+	switch S {
+	case Critical: return "CRIT"
+	case Error:    return "ERROR"
+	case Warning:  return "WARNING"
+	case Notice:   return "NOTICE"
+	case Info:     return "INFO"
+	case Debug1:   return "DEBUG"
+	case Debug2:   return "DEBUG"
+	case Debug3:   return "DEBUG"
+	default:
+		return fmt.Sprintf("0x%x", int(S))
+	}
+}
+
 // bit-reset (reversed) mask for severity flags
 const severityShadowMask SevFlagT = 0xF000
 // bit-reset (reversed) mask for attribute flags
@@ -141,6 +156,8 @@ func NewLogger() *Logger {
 	l.severityOrder = make(map[RecorderID]*list.List)
 	return l
 }
+
+func (L *Logger) NumberOfRecorders() int { return len(L.recorders) }
 
 // The same as RegisterRecorderEx, but adds recorder to defaults automatically.
 func (L *Logger) RegisterRecorder(id RecorderID, recorder logRecorder) bool {
@@ -341,8 +358,7 @@ func (L *Logger) ChangeSeverityOrder(
 		}
 	}
 
-	// only custom flags are moveable
-	srcFlag = srcFlag &^ 0xF0FF
+	srcFlag = srcFlag &^ 0xF0FF // only custom flags are moveable
 	if srcFlag == 0 {
 		return errors.New("wrong flag value")
 	}
