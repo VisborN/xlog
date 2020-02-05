@@ -80,7 +80,7 @@ func TestSeverityOrder(t *testing.T) {
 
 	if sev := logger.severityProtector(
 		logger.severityOrder[RecorderID("direct")], Error | Info); sev != Error {
-		t.Errorf("severityProtector() fail\nresult: %012b\nexpected: %012b", sev, Error)
+		t.Errorf("severityProtector() fail\nresult:   %012b\nexpected: %012b", sev, Error)
 	}
 	msg := NewLogMsg().Severity(Error | Info).Setf("3 should be error")
 	if err := logger.WriteMsg(nil, msg); err != nil {
@@ -94,7 +94,7 @@ func TestSeverityOrder(t *testing.T) {
 
 	if sev := logger.severityProtector(
 		logger.severityOrder[RecorderID("direct")], Error | Info); sev != Info {
-		t.Errorf("severityProtector() fail\nresult: %012b\nexpected: %012b", sev, Info)
+		t.Errorf("severityProtector() fail\nresult:   %012b\nexpected: %012b", sev, Info)
 	}
 	msg.UpdateTime().Severity(Error | Info).Setf("3 should be info")
 	if err := logger.WriteMsg(nil, msg); err != nil {
@@ -122,7 +122,7 @@ func TestSeverityMask(t *testing.T) {
 			logger.severityMasks["direct"])
 	}
 	if v:= logger.severityMasks["direct"]; v != 0x3A {
-		t.Errorf("unexpected mask value\ncurrent: %012b\nexpected: %012b", v, 0x3A)
+		t.Errorf("unexpected mask value\ncurrent:  %012b\nexpected: %012b", v, 0x3A)
 	}
 
 	logger.Write(Critical, "4 should be hidden")
@@ -143,7 +143,7 @@ func TestSeverityMask(t *testing.T) {
 			logger.severityMasks["direct"])	
 	}
 	if v := logger.severityMasks["direct"]; v != 0xFFC {
-		t.Errorf("unexpected mask value\ncurrent: %012b\nexpected: %012b", v, 0xFFC)
+		t.Errorf("unexpected mask value\ncurrent:  %012b\nexpected: %012b", v, 0xFFC)
 	}
 
 	logger.Write(Critical, "4 should be hidden")
@@ -158,9 +158,9 @@ func TestSeverityMask(t *testing.T) {
 
 var testValueName string
 var testValueOutpFlag bool
-func testValue(t *testing.T, value int, expected int) bool {
+func testValue(t *testing.T, value int, expected int) bool { // utility function
 	if value != expected {
-		t.Errorf("unexpected %s value\ncurrent: %d\nexpected: %d",
+		t.Errorf("unexpected %s value\ncurrent:  %d\nexpected: %d",
 			testValueName, value, expected)
 		return false
 	}

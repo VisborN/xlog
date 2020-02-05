@@ -441,6 +441,7 @@ func (L *Logger) Write(severity SevFlagT, msgFmt string, msgArgs ...interface{})
 //
 // TODO: additional log/outp notifications at errors
 func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
+	if !L.initialised { return errors.New("this logger is unibitialised") }
 	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
 		panic("xlog: bumped to nil")
 	}
