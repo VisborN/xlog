@@ -52,7 +52,7 @@ func (R *ioDirectRecorder) OnClose(f func(interface{})) *ioDirectRecorder {
 }
 
 func (R *ioDirectRecorder) write(msg LogMsg) error {
-	if !R.initialised { return NotInitialised }
+	if !R.initialised { return ErrNotInitialised }
 	msgData := msg.content
 	if R.format != nil {
 		msgData = R.format(&msg)

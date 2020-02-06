@@ -3,7 +3,6 @@ package xlog
 import (
 	"fmt"
 	"time"
-	"errors"
 	"container/list"
 )
 
@@ -41,9 +40,9 @@ func (S SevFlagT) String() string {
 	case Warning:  return "WARNING"
 	case Notice:   return "NOTICE"
 	case Info:     return "INFO"
-	case Debug1:   return "DEBUG"
-	case Debug2:   return "DEBUG"
-	case Debug3:   return "DEBUG"
+	case Debug1:   return "DEBUG-1"
+	case Debug2:   return "DEBUG-2"
+	case Debug3:   return "DEBUG-3"
 	default:
 		return fmt.Sprintf("0x%x", int(S))
 	}
@@ -54,7 +53,7 @@ const severityShadowMask SevFlagT = 0xF000
 // bit-reset (reversed) mask for attribute flags
 const attributeShadowMask SevFlagT = 0x0FFF
 
-// predifined severity sets (utility)
+// predefined severity sets
 const SeverityAll    SevFlagT = 0xFFF
 const SeverityMajor  SevFlagT = 0x00F
 const SeverityMinor  SevFlagT = 0x0F0
@@ -160,25 +159,21 @@ func NewLogger() *Logger {
 func (L *Logger) NumberOfRecorders() int { return len(L.recorders) }
 
 // The same as RegisterRecorderEx, but adds recorder to defaults automatically.
-func (L *Logger) RegisterRecorder(id RecorderID, recorder logRecorder) bool {
+func (L *Logger) RegisterRecorder(id RecorderID, recorder logRecorder) error {
 	return L.RegisterRecorderEx(id, true, recorder)
 }
 
 // RegisterRecorder registers the recorder in the logger with the given id.
 // An asDefault parameter says whether the need to set it as default recorder.
-//
-// The function returns true on success, and false if the given id is already bound.
-//
-// This function can panic if it found a critical error in the logger data.
-func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logRecorder) bool {
-	// this function should configure all related fields
-	// other functions will panic if they meet a unexpected data
+func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logRecorder) error {
+	// This function should configure all related fields. Other functions
+	// will return critical error if they meet a wrong logger data.
 
 	if L.recorders == nil {
 		L.recorders = make(map[RecorderID]logRecorder)
 	} else {
 		for recID, _ := range L.recorders {
-			if recID == id { return false }
+			if recID == id { return ErrWrongRecorderID }
 		}
 	}
 	L.recorders[id] = recorder
@@ -192,7 +187,8 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 	// check for ensure that it's correct
 	for _, recID := range L.defaults {
 		if recID == id {
-			panic("xlog: impossible identifier found in default recorders list")
+			// if id not found in recorders, defaults can't contain it
+			return internalError(ieUnreachable, ".defaults: found unexpected id")
 		}
 	}
 
@@ -202,6 +198,9 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 	}
 
 	// setup severity order for this recorder
+	if L.severityOrder == nil {
+		L.severityOrder = make(map[RecorderID]*list.List)
+	}
 	L.severityOrder[id] = list.New().Init()
 	// default severity order (up to down)
 	L.severityOrder[id].PushBack(Critical)
@@ -217,37 +216,29 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 	L.severityOrder[id].PushBack(Custom3)
 	L.severityOrder[id].PushBack(Custom4)
 
-	return true
+	return nil
 }
 
 // Initialise calls initialisation functions of each registered recorder.
-//
-// If all of them return nil (no error), this function also returns nil.
-// If some initialisation functions return error, this function returns
-// InitialisationError with map of failed recorders and them errors.
-//
-// Be careful, even if it returns an error, some of the recorders can be
-// initialised successfully. You can get a global processing status by
-// InitialisationError.ErrorInAll. If it has false value, it means that
-// some of the recorders have been initialised.
 func (L *Logger) Initialise() error {
 	if L.initialised { return nil } // already initialised
 	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
-		panic("xlog: bumped to nil")
+		return internalError(ieCritical, "bumped to nil")
 	}
-	if len(L.recorders) == 0 { return NoRecordersError }
+	if len(L.recorders) == 0 { return ErrNoRecorders }
 
-	e := errInitialisationError()
+	br := BatchResult{}
+	br.SetMsg("") // TODO
 	for id, rec := range L.recorders {
 		if err := rec.initialise(); err != nil {
-			e.RecordersErrors[id] = err
+			br.Fail(id, err)
+		} else {
+			br.OK(id)
 		}
 	}
-	if l := len(e.RecordersErrors); l > 0 {
-		if l == len(L.recorders) { e.SetAll() }
-		return e
+	if br.Errors() != nil {
+		return br
 	}
-
 	L.initialised = true
 	return nil
 }
@@ -255,10 +246,6 @@ func (L *Logger) Initialise() error {
 // Close calls closing functions of each registered recorder.
 func (L *Logger) Close() {
 	if !L.initialised { return } // not initialised currently
-	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
-		//panic("xlog: bumped to nil")
-		return
-	}
 	if len(L.recorders) == 0 { return }
 	for _, rec := range L.recorders {
 		rec.close()
@@ -271,37 +258,37 @@ func (L *Logger) Close() {
 // (The default recorders list determinate which recorders will use for
 // writing if custom recorders are not specified in the log message.)
 func (L *Logger) AddToDefaults(recorders []RecorderID) error {
-	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
-		panic("xlog: bumped to nil")
-	}
-	if len(L.recorders) == 0 { return NoRecordersError }
+	if len(L.recorders) == 0 { return ErrNoRecorders }
 
 	// check registered recorders
-	notRegisteredErr := RecordersError{
-		err: errors.New("some of the given recorders are not registered"),
-	}
-	for _, recID := range recorders {
-		if _, exist := L.recorders[recID]; !exist {
-			notRegisteredErr.Add(recID)
+	br := BatchResult{}
+	br.SetMsg("") // TODO
+	for i, recID := range recorders {
+		if _, exist := L.recorders[recID]; !exist { // not found
+			br.Fail(recID, ErrWrongRecorderID)
+			// remove item from list
+			recorders[i] = recorders[len(recorders)-1]
+			recorders[len(recorders)-1] = ""
+			recorders = recorders[:len(recorders)-1]
 		}
-	}
-	if notRegisteredErr.NotEmpty() {
-		return notRegisteredErr
 	}
 
 main_iter:
 	for _, recID := range recorders {
-
 		// check defaults for duplicate
 		for _, defID := range L.defaults {
 			if defID == recID { // id already in the defaults
 				continue main_iter; // skip this recorder
 			}
 		}
-
+		// register as default
 		L.defaults = append(L.defaults, recID)
+		br.OK(recID)
 	}
 
+	if br.Errors() != nil {
+		return br
+	}
 	return nil
 }
 
@@ -310,35 +297,36 @@ main_iter:
 // (The default recorders list determinate which recorders will use for
 // writing if custom recorders are not specified in the log message.)
 func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
-	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
-		panic("xlog: bumped to nil")
-	}
-	if len(L.recorders) == 0 { return NoRecordersError }
+	if len(L.recorders) == 0 { return ErrNoRecorders }
 
 	// check registered recorders
-	notRegisteredErr := RecordersError{
-		err: errors.New("some of the given recorders are not registered"),
-	}
-	for _, recID := range recorders {
-		if _, exist := L.recorders[recID]; !exist {
-			notRegisteredErr.Add(recID)
+	br := BatchResult{}
+	br.SetMsg("") // TODO
+	for i, recID := range recorders {
+		if _, exist := L.recorders[recID]; !exist { // not found
+			br.Fail(recID, ErrWrongRecorderID)
+			// remove item from list
+			recorders[i] = recorders[len(recorders)-1]
+			recorders[len(recorders)-1] = RecorderID("")
+			recorders = recorders[:len(recorders)-1]
 		}
-	}
-	if notRegisteredErr.NotEmpty() {
-		return notRegisteredErr
-	}
+	}	
 
 	// delete given ids from defaults
 	for _, recID := range recorders {
 		for i, defID := range L.defaults {
 			if defID == recID {
 				L.defaults[i] = L.defaults[len(L.defaults)-1]
-				//L.defaults[len(L.defaults)-1] = RecorderID("")
+				L.defaults[len(L.defaults)-1] = RecorderID("")
 				L.defaults = L.defaults[:len(L.defaults)-1]
+				br.OK(recID)
 			}
 		}
 	}
 
+	if br.Errors() != nil {
+		return br
+	}
 	return nil
 }
 
@@ -350,72 +338,63 @@ func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
 func (L *Logger) ChangeSeverityOrder(
 	recorder RecorderID, srcFlag SevFlagT, dir ssDirection, trgFlag SevFlagT,
 ) error {
-
-	if len(L.recorders) == 0 { return NoRecordersError }
+	
+	if len(L.recorders) == 0 { return ErrNoRecorders }
 	if _, exist := L.recorders[recorder]; !exist {
-		return RecordersError{ []RecorderID{recorder},
-			fmt.Errorf("the recorder '%s' is not registered", recorder),
-		}
+		return ErrWrongRecorderID
+	}		
+	if L.severityOrder == nil {
+		return internalError(ieCritical, "bumped to nil")
 	}
 
 	// DISABLED
 	//srcFlag = srcFlag &^ 0xF0FF // only custom flags are moveable
 
-	if srcFlag == 0 {
-		return errors.New("wrong flag value")
+	if srcFlag == 0 { return ErrWrongFlagValue }	
+		
+	orderlist, exist := L.severityOrder[recorder]
+	if !exist {
+		return internalError(ieUnreachable, ".severityOrder: missing valid id")
 	}
-
-	if orderlist, exist := L.severityOrder[recorder]; !exist {
-		panic("xlog: recorder id can't be found in severity order map")
-	} else {
-		var src *list.Element
-		var trg *list.Element
-		for e := orderlist.Front(); e != nil; e = e.Next() {
-			if sev, ok := e.Value.(SevFlagT); !ok {
-				panic("xlog: severityOrder, type is invalid")
-			} else {
-				if sev == srcFlag { src = e
-					if trg != nil { break }
-				}
-				if sev == trgFlag { trg = e
-					if src != nil { break }
-				}
+	var src *list.Element
+	var trg *list.Element
+	for e := orderlist.Front(); e != nil; e = e.Next() {
+		if sev, ok := e.Value.(SevFlagT); !ok {
+			return internalError(ieUnreachable, "unexpected value type")
+		} else {
+			if sev == srcFlag { src = e
+				if trg != nil { break }
+			}
+			if sev == trgFlag { trg = e
+				if src != nil { break }
 			}
 		}
-
-		// unreachable, all flags should be described
-		if src == nil {
-			return fmt.Errorf("can't find flag (%b) in the list", srcFlag)
-		}
-		if trg == nil {
-			return fmt.Errorf("can't find flag (%b) in the list", trgFlag)
-		}
-
-		// change order
-		if dir == Before {
-			L.severityOrder[recorder].MoveBefore(src, trg)
-		} else { // After
-			L.severityOrder[recorder].MoveAfter(src, trg)
-		}
-	}	
+	}
+	
+	if src == nil { return ErrWrongFlagValue }
+	if trg == nil { return ErrWrongFlagValue }
+	
+	// change order
+	if dir == Before {
+		L.severityOrder[recorder].MoveBefore(src, trg)
+	} else { // After
+		L.severityOrder[recorder].MoveAfter(src, trg)
+	}
 
 	return nil
 }
 
 // SetSeverityMask sets which severities allowed for the given recorder in this logger.
 func (L *Logger) SetSeverityMask(recorder RecorderID, flags SevFlagT) error {
-	if L.recorders == nil || L.severityMasks == nil {
-		panic("xlog: bumped to nil")
-	}
-	if len(L.recorders) == 0 { return NoRecordersError }
+	if L.severityMasks == nil { return internalError(ieCritical, "bumped to nil") }
+	if len(L.recorders) == 0 { return ErrNoRecorders }
 
 	if sevMask, exist := L.severityMasks[recorder]; !exist {
+		// already failed, we should choose error here
 		if _, exist := L.recorders[recorder]; !exist {
-			return RecordersError{ []RecorderID{recorder},
-				fmt.Errorf("the recorder '%s' is not registered", recorder),
-			}
+			return ErrWrongRecorderID
 		} else {
-			panic("xlog: recorder id can't be found in severity masks map")
+			return internalError(ieUnreachable, ".severityMasks: missing valid id")
 		}
 		_ = sevMask // THAT'S COMPLETELY STUPID, GOLANG
 	} else {
@@ -438,57 +417,62 @@ func (L *Logger) Write(severity SevFlagT, msgFmt string, msgArgs ...interface{})
 // WriteMsg writes given message using the specified recorders of this logger.
 // If custom recorders are not specified, uses default recorders. Returns nil
 // on success and error on fail.
-//
-// TODO: additional log/outp notifications at errors
 func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
-	if !L.initialised { return errors.New("this logger is unibitialised") }
-	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
-		panic("xlog: bumped to nil")
-	}
-	if len(L.recorders) == 0 { return NoRecordersError }
+	if !L.initialised { return ErrNotInitialised }
+	if L.severityMasks == nil || L.severityOrder == nil {
+		return internalError(ieCritical, "bumped to nil") }
+	if len(L.recorders) == 0 { return ErrNoRecorders }
 	if len(L.defaults) == 0 && len(recorders) == 0 {
-		return errors.New(
-			"the logger has no default recorders, "+
-			"but custom recorders are not specified")
+		return ErrNotWhereToWrite
 	}
 
-	if len(recorders) > 0 {
-		// check registered recorders
-		notRegisteredErr := RecordersError{
-			err: errors.New("some of the given recorders are not registered"),
-		}
-		for _, recID := range recorders {
+	br := BatchResult{}
+	br.SetMsg("") // TODO
+
+	if len(recorders) > 0 { // custom rec. specified
+		for i, recID := range recorders {
 			if _, exist := L.recorders[recID]; !exist {
-				notRegisteredErr.Add(recID)
+				br.Fail(recID, ErrWrongRecorderID)
+				// remove item from list
+				recorders[i] = recorders[len(recorders)-1]
+				recorders[len(recorders)-1] = ""
+				recorders = recorders[:len(recorders)-1]
 			}
-		}
-		if notRegisteredErr.NotEmpty() {
-			return notRegisteredErr
 		}
 	} else { // use default recorders
 		recorders = L.defaults
 	}
 
 	for _, recID := range recorders {
-		(*msg).severity = L.severityProtector(L.severityOrder[recID], (*msg).severity)
-		if (*msg).severity == 0 { (*msg).severity = Info }
-		if sevMask, exist := L.severityMasks[recID]; exist {
-			if sevMask == 0 { return fmt.Errorf("severity mask is 0") }
-			if (*msg).severity == 0 { panic("xlog: severity is 0") }
-			if (*msg).severity & sevMask > 0 {
-				if rec, exist := L.recorders[recID]; exist {
-					if err := rec.write(*msg); err != nil { // <---
-						return err // ignore remaining
-					}
+		ie := L.severityProtector(L.severityOrder[recID], &((*msg).severity) )
+		if ie != nil {
+			br.Fail(recID, ie);
+			continue
+		}
+		if (*msg).severity == 0 { (*msg).severity = Info } // <-----------------+
+		if sevMask, exist := L.severityMasks[recID]; exist { //                 |
+			//if (*msg).severity == 0 { // <--------------------------------------+
+			//	ie = internalError(ieUnreachable, "severity is 0")
+			//	br.Fail(recID, ie)
+			//	continue
+			//}
+			if (*msg).severity & sevMask > 0 { // severity allowed
+				rec := L.recorders[recID] // recorder id is valid, already checked
+				if err := rec.write(*msg); err != nil {
+					br.Fail(recID, err)
 				} else {
-					panic("xlog: recorder id can't be found in registered recorders map")
+					br.OK(recID)
 				}
 			}
 		} else {
-			panic("xlog: recorder id can't be found in severity masks map")
+			ie = internalError(ieUnreachable, ".severityMasks: missing valid id")
+			br.Fail(recID, ie)
 		}
 	}
 
+	if br.Errors() != nil {
+		return br
+	}
 	return nil
 }
 
@@ -496,16 +480,19 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 // a severity argument should have only one of these flags. So it ensures
 // (accordingly to the depth order) that severity value provide only one
 // flag.
-func (L *Logger) severityProtector(orderlist *list.List, flags SevFlagT) SevFlagT {
-	if orderlist == nil { panic("xlog: severityProtector, wrong parameter") }
-	if orderlist.Len() == 0 { panic("xlog: orderlist zero length") }
+func (L *Logger) severityProtector(orderlist *list.List, flags *SevFlagT) error {
+	if orderlist == nil || orderlist.Len() == 0 {
+		return internalError(ieCritical, "wrong 'orderlist' parameter value")
+	}
 	for e := orderlist.Front(); e != nil; e = e.Next() {
 		if sev, ok := e.Value.(SevFlagT); ok {
-			if flags & sev > 0 { return sev }
+			if *flags & sev > 0 {
+				*flags = sev
+				return nil
+			}
 		} else {
-			panic("xlog: severityOrder, type is invalid")
+			return internalError(ieUnreachable, "type is invalid")
 		}
 	}
-	//panic("xlog: severityProtector, can't find severity flag in orderlist")
-	return 0
+	return internalError(ieUnreachable, "can't find severity flag in orderlist (%012b)", *flags)
 }

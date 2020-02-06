@@ -3,6 +3,8 @@ package xlog
 import "errors"
 import "log/syslog"
 
+var errWrongPriority = errors.New("wrong priority value")
+
 type syslogRecorder struct {
 	initialised bool
 	refCounter  int
@@ -42,7 +44,7 @@ func NewSyslogRecorder(prefix string) *syslogRecorder {
 // BindSeverityFlag rebinds severity flag to the new syslog priority code.
 func (R *syslogRecorder) BindSeverityFlag(severity SevFlagT, priority syslog.Priority) error {
 	if _, exist := R.sevBindings[severity]; !exist {
-		return errors.New("wrong severity value")
+		return ErrWrongFlagValue
 	}
 
 	if ( // syslog.Priority can contains facility codes
@@ -54,7 +56,7 @@ func (R *syslogRecorder) BindSeverityFlag(severity SevFlagT, priority syslog.Pri
 		priority != syslog.LOG_NOTICE  &&
 		priority != syslog.LOG_INFO    &&
 		priority != syslog.LOG_DEBUG ) {
-		return errors.New("wrong priority value")
+		return errWrongPriority
 	}	
 
 	R.sevBindings[severity] = priority
@@ -85,14 +87,14 @@ func (R *syslogRecorder) FormatFunc(f FormatFunc) *syslogRecorder {
 }
 
 func (R *syslogRecorder) write(msg LogMsg) error {
-	if !R.initialised { return NotInitialised }
+	if !R.initialised { return ErrNotInitialised }
 	msgData := msg.content
 	if R.format != nil {
 		msgData = R.format(&msg)
 	}
 
 	if priority, exist := R.sevBindings[msg.severity]; exist {
-		switch priority {
+		switch priority {        // WRITE
 		case syslog.LOG_EMERG:   R.logger.Emerg(msgData)
 		case syslog.LOG_ALERT:   R.logger.Alert(msgData)
 		case syslog.LOG_CRIT:    R.logger.Crit(msgData)
@@ -102,10 +104,10 @@ func (R *syslogRecorder) write(msg LogMsg) error {
 		case syslog.LOG_INFO:    R.logger.Info(msgData)
 		case syslog.LOG_DEBUG:   R.logger.Debug(msgData)
 		default:
-			errors.New("unexpected priority value") // internal
+			return internalError(ieUnreachable, "unexpected priority value")
 		}
 	} else {
-		errors.New("wrong severity flag")
+		return ErrWrongFlagValue
 	}
 
 	return nil
