@@ -114,7 +114,7 @@ func (LM *LogMsg) Setf(msgFmt string, msgArgs ...interface{}) *LogMsg {
 }
 
 func (LM *LogMsg) GetTime()     time.Time { return LM.time }
-func (LM *LogMsg) GetSeverity() SevFlagT    { return LM.severity }
+func (LM *LogMsg) GetSeverity() SevFlagT  { return LM.severity }
 func (LM *LogMsg) GetContent()  string    { return LM.content }
 
 // -----------------------------------------------------------------------------
@@ -123,7 +123,6 @@ type FormatFunc func(*LogMsg) string
 
 type logRecorder interface {
 	initialise() error
-	//isInitialised() bool
 	close()
 	write(LogMsg) error
 }
@@ -137,11 +136,14 @@ type Logger struct {
 
 	recorders map[RecorderID]logRecorder
 
-	// determines what severities each recorder will write
-	severityMasks map[RecorderID]SevFlagT
+	// describes initialisation status of each recorder
+	recordersState map[RecorderID]bool
 
 	defaults []RecorderID // list of default recorders
 	// TODO: description
+
+	// determines what severities each recorder will write
+	severityMasks map[RecorderID]SevFlagT	
 
 	// determines severity order for each recorder
 	severityOrder map[RecorderID]*list.List
@@ -151,6 +153,7 @@ type Logger struct {
 func NewLogger() *Logger {
 	l := new(Logger)
 	l.recorders = make(map[RecorderID]logRecorder)
+	l.recordersState = make(map[RecorderID]bool)
 	l.severityMasks = make(map[RecorderID]SevFlagT)
 	l.severityOrder = make(map[RecorderID]*list.List)
 	return l
@@ -177,6 +180,12 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 		}
 	}
 	L.recorders[id] = recorder
+
+	// setup initialisation state
+	if L.recordersState == nil {
+		L.recordersState = make(map[RecorderID]bool)
+	}
+	L.recordersState[id] = false
 
 	// recorder works with all severities by default
 	if L.severityMasks == nil {
@@ -228,12 +237,19 @@ func (L *Logger) Initialise() error {
 	if len(L.recorders) == 0 { return ErrNoRecorders }
 
 	br := BatchResult{}
-	br.SetMsg("") // TODO
+	br.SetMsg("some of the given recorders are not initialised")
 	for id, rec := range L.recorders {
-		if err := rec.initialise(); err != nil {
-			br.Fail(id, err)
+		if state, exist := L.recordersState[id]; exist {
+			if state { continue }
+			if err := rec.initialise(); err != nil {
+				br.Fail(id, err)
+			} else {
+				L.recordersState[id] = true
+				br.OK(id)
+			}
 		} else {
-			br.OK(id)
+			br.Fail(id, internalError(ieUnreachable,
+				".recordersState: missing valid id"))
 		}
 	}
 	if br.Errors() != nil {
@@ -262,7 +278,7 @@ func (L *Logger) AddToDefaults(recorders []RecorderID) error {
 
 	// check registered recorders
 	br := BatchResult{}
-	br.SetMsg("") // TODO
+	br.SetMsg("some of given recorder IDs are invalid")
 	for i, recID := range recorders {
 		if _, exist := L.recorders[recID]; !exist { // not found
 			br.Fail(recID, ErrWrongRecorderID)
@@ -301,7 +317,7 @@ func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
 
 	// check registered recorders
 	br := BatchResult{}
-	br.SetMsg("") // TODO
+	br.SetMsg("some of given recorder IDs are invalid")
 	for i, recID := range recorders {
 		if _, exist := L.recorders[recID]; !exist { // not found
 			br.Fail(recID, ErrWrongRecorderID)
@@ -427,7 +443,7 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 	}
 
 	br := BatchResult{}
-	br.SetMsg("") // TODO
+	br.SetMsg("an error occurred in some of the given recorders")
 
 	if len(recorders) > 0 { // custom rec. specified
 		for i, recID := range recorders {

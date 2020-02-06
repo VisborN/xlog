@@ -172,6 +172,63 @@ func TestSeverityMask(t *testing.T) {
 	//logger.Write(Debug3,   "4 should be visible")
 }
 
+func TestInitialisation(t *testing.T) {
+	var dbgOutp string
+	logger := NewLogger()
+	dbgRecorder1 := t_newDebugRecorder("DR1", &dbgOutp)
+	dbgRecorder2 := t_newDebugRecorder("DR2", &dbgOutp)
+	logger.RegisterRecorder("debug-1", dbgRecorder1)
+	logger.RegisterRecorder("debug-2", dbgRecorder2)
+
+	fShowData := func() {
+		msg := "<show info>\n"
+		msg += fmt.Sprintf("logger: initialised=%v\n", logger.initialised)
+		for recID, state := range logger.recordersState {
+			msg += fmt.Sprintf("  %-10s : %v\n", recID, state)
+		}
+		msg += "recorders data:\n"
+		for _, rec := range logger.recorders {
+			rec.write(*NewLogMsg())
+			msg += fmt.Sprintf("  %s\n", dbgOutp)
+			dbgOutp = ""
+		}
+		t.Log(msg[:len(msg)-1])
+	}
+
+	t.Log("--> 1st initialisation call")
+	dbgRecorder2.DbgFailInit = true
+	err := logger.Initialise()
+	if err == nil {
+		t.Errorf("[unexpected behaviour] initialisation success")
+	} else {
+		msg := "[OK] debug initialisation failed\n"
+		if br, ok := err.(BatchResult); ok {
+			msg += "---successful---\n"
+			for _, r  := range br.ListOfSuccessful() {
+				msg += fmt.Sprintf("%s\n", r)
+			}
+			msg += "---failed---\n"
+			for r, e := range br.Errors() {
+				msg += fmt.Sprintf("%s: %s\n", r, e)
+			}	
+		} else { t.Errorf("unexpected error type") }
+		t.Log(msg[:len(msg)-1])
+	}
+	fShowData()
+
+	t.Log("--> 2nd initialisation call")
+	//dbgRecorder1.DbgFailInit = true
+	dbgRecorder2.DbgFailInit = false
+	err = logger.Initialise()
+	t.Logf("result: %v", err)
+	fShowData()
+
+	t.Log("--> 3rd initialisation call")
+	err = logger.Initialise()
+	t.Logf("result: %v", err)
+	fShowData()
+}
+
 var testValueName string
 var testValueOutpFlag bool
 func testValue(t *testing.T, value int, expected int) bool { // utility function
@@ -254,4 +311,54 @@ func TestRefCounters(t *testing.T) {
 	t.Log("--> 2st closing of logger2")
 	logger2.Close()
 	if !testValue(t, recorder.refCounter, 0) { return }
+}
+
+// -----------------------------------------------------------------------------
+//                        ***** DEBUG RECORDER *****
+// -----------------------------------------------------------------------------
+
+type debugRecorder struct { // ioDirectRecorder behaviour
+	initialised  bool
+	refCounter   int
+	DbgFailInit  bool
+	DbgFailWrite bool
+	DbgOutput    *string
+	iid          string
+}
+
+func t_newDebugRecorder(iid string, outp *string) *debugRecorder {
+	r := new(debugRecorder)
+	r.DbgOutput = outp
+	r.iid = iid
+	return r
+}
+
+func (R *debugRecorder) initialise() error {
+	if R.DbgFailInit { return fmt.Errorf("debug error") }
+	R.initialised = true
+	R.refCounter++
+	return nil
+}
+
+func (R *debugRecorder) close() {
+	//if !R.initialised { return }
+	if R.refCounter <= 0 { return }
+	if R.refCounter == 1 {
+		R.initialised = false
+	};R.refCounter--
+}
+
+func (R *debugRecorder) isInitialised() bool {
+	return R.initialised
+}
+
+func (R *debugRecorder) write(msg LogMsg) error {
+	if R.DbgOutput != nil {
+		*R.DbgOutput = fmt.Sprintf(
+			"[%s] initialised=%v  refCounter=%d",
+			R.iid, R.initialised, R.refCounter)
+	}
+	if !R.initialised { return ErrNotInitialised }
+	if R.DbgFailWrite { return fmt.Errorf("debug error") }
+	return nil
 }

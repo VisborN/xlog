@@ -6,7 +6,6 @@ import (
 )
 
 type ioDirectRecorder struct {
-	initialised bool
 	refCounter  int
 	prefix      string
 	format      FormatFunc
@@ -26,19 +25,18 @@ func NewIoDirectRecorder(writer io.Writer, prefix ...string) *ioDirectRecorder {
 	return r
 }
 
-// this function never returns a non-nil error
 func (R *ioDirectRecorder) initialise() error {
-	R.initialised = true
+	//if R.refCounter < 0 { R.refCounter = 0 }
 	R.refCounter++
 	return nil
 }
 
 func (R *ioDirectRecorder) close() {
-	if !R.initialised { return }
+	if R.refCounter == 0 { return }
 	if R.refCounter == 1 {
 		if R.closer != nil { R.closer(nil) }
-		R.initialised = false
-	}; R.refCounter--
+	}
+	R.refCounter--
 }
 
 // FormatFunc sets custom formatter function for this recorder.
@@ -52,7 +50,7 @@ func (R *ioDirectRecorder) OnClose(f func(interface{})) *ioDirectRecorder {
 }
 
 func (R *ioDirectRecorder) write(msg LogMsg) error {
-	if !R.initialised { return ErrNotInitialised }
+	if R.refCounter == 0 { return ErrNotInitialised }
 	msgData := msg.content
 	if R.format != nil {
 		msgData = R.format(&msg)

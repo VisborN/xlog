@@ -6,7 +6,6 @@ import "log/syslog"
 var errWrongPriority = errors.New("wrong priority value")
 
 type syslogRecorder struct {
-	initialised bool
 	refCounter  int
 	prefix      string
 	format      FormatFunc
@@ -64,21 +63,21 @@ func (R *syslogRecorder) BindSeverityFlag(severity SevFlagT, priority syslog.Pri
 }
 
 func (R *syslogRecorder) initialise() error {
-	if !R.initialised { var err error
+	//if R.refCounter < 0 { R.refCounter = 0 }
+	if R.refCounter == 0 { var err error
 		R.logger, err = syslog.New(syslog.LOG_INFO | syslog.LOG_USER, R.prefix)
 		if err != nil { return err }
-		R.initialised = true
 	}
 	R.refCounter++
 	return nil
 }
 
 func (R *syslogRecorder) close() {
-	if !R.initialised { return }
+	if R.refCounter == 0 { return }
 	if R.refCounter == 1 {
-		R.initialised = false
 		R.logger.Close()
-	}; R.refCounter--
+	}
+	R.refCounter--
 }
 
 // FormatFunc sets custom formatter function for this recorder.
@@ -87,7 +86,7 @@ func (R *syslogRecorder) FormatFunc(f FormatFunc) *syslogRecorder {
 }
 
 func (R *syslogRecorder) write(msg LogMsg) error {
-	if !R.initialised { return ErrNotInitialised }
+	if R.refCounter == 0 { return ErrNotInitialised }
 	msgData := msg.content
 	if R.format != nil {
 		msgData = R.format(&msg)
