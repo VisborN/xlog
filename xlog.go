@@ -444,14 +444,14 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 	}
 
 	for _, recID := range recorders {
-		ie := L.severityProtector(L.severityOrder[recID], &((*msg).severity) )
-		if ie != nil {
-			br.Fail(recID, ie);
-			continue
-		}
-		if (*msg).severity == 0 { (*msg).severity = Info } // <-----------------+
-		if sevMask, exist := L.severityMasks[recID]; exist { //                 |
-			//if (*msg).severity == 0 { // <--------------------------------------+
+		if (*msg).severity == 0 { (*msg).severity = Info } // <---------------------+
+		ie := L.severityProtector(L.severityOrder[recID], &((*msg).severity) ) //   |
+		if ie != nil {                                                         //   |
+			br.Fail(recID, ie);                                                  //   |
+			continue                                                             //   |
+		}                                                                      //   |
+		if sevMask, exist := L.severityMasks[recID]; exist {                   //   |
+			//if (*msg).severity == 0 { // <------------------------------------------+
 			//	ie = internalError(ieUnreachable, "severity is 0")
 			//	br.Fail(recID, ie)
 			//	continue
