@@ -3,9 +3,11 @@ package xlog
 import (
 	"io"
 	"fmt"
+	"sync"
 )
 
 type ioDirectRecorder struct {
+	sync.Mutex
 	refCounter  int
 	prefix      string
 	format      FormatFunc
@@ -27,11 +29,14 @@ func NewIoDirectRecorder(writer io.Writer, prefix ...string) *ioDirectRecorder {
 
 func (R *ioDirectRecorder) initialise() error {
 	//if R.refCounter < 0 { R.refCounter = 0 }
+	R.Lock()
 	R.refCounter++
+	R.Unlock()
 	return nil
 }
 
 func (R *ioDirectRecorder) close() {
+	R.Lock(); defer R.Unlock()
 	if R.refCounter == 0 { return }
 	if R.refCounter == 1 {
 		if R.closer != nil { R.closer(nil) }
@@ -41,15 +46,18 @@ func (R *ioDirectRecorder) close() {
 
 // FormatFunc sets custom formatter function for this recorder.
 func (R *ioDirectRecorder) FormatFunc(f FormatFunc) *ioDirectRecorder {
+	R.Lock(); defer R.Unlock()
 	R.format = f; return R
 }
 
 // OnClose sets function which will be executed on close() function call.
 func (R *ioDirectRecorder) OnClose(f func(interface{})) *ioDirectRecorder {
+	R.Lock(); defer R.Unlock()
 	R.closer = f; return R
 }
 
 func (R *ioDirectRecorder) write(msg LogMsg) error {
+	R.Lock(); defer R.Unlock()
 	if R.refCounter == 0 { return ErrNotInitialised }
 	msgData := msg.content
 	if R.format != nil {
