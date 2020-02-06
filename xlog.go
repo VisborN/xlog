@@ -3,6 +3,7 @@ package xlog
 import (
 	"fmt"
 	"time"
+	"sync"
 	"container/list"
 )
 
@@ -130,6 +131,8 @@ type logRecorder interface {
 type RecorderID string
 
 type Logger struct {
+	sync.Mutex
+
 	initialised bool // init falg
 	// We must sure that functions init/close doesn't call successively.
 	// In any other case, we can have problems with reference counters calculations.
@@ -159,7 +162,10 @@ func NewLogger() *Logger {
 	return l
 }
 
-func (L *Logger) NumberOfRecorders() int { return len(L.recorders) }
+func (L *Logger) NumberOfRecorders() int {
+	L.Lock(); defer L.Unlock()
+	return len(L.recorders)
+}
 
 // The same as RegisterRecorderEx, but adds recorder to defaults automatically.
 func (L *Logger) RegisterRecorder(id RecorderID, recorder logRecorder) error {
@@ -171,6 +177,8 @@ func (L *Logger) RegisterRecorder(id RecorderID, recorder logRecorder) error {
 func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logRecorder) error {
 	// This function should configure all related fields. Other functions
 	// will return critical error if they meet a wrong logger data.
+
+	L.Lock(); defer L.Unlock()
 
 	if L.recorders == nil {
 		L.recorders = make(map[RecorderID]logRecorder)
@@ -230,6 +238,7 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 
 // Initialise calls initialisation functions of each registered recorder.
 func (L *Logger) Initialise() error {
+	L.Lock(); defer L.Unlock()
 	if L.initialised { return nil } // already initialised
 	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
 		return internalError(ieCritical, "bumped to nil")
@@ -261,6 +270,7 @@ func (L *Logger) Initialise() error {
 
 // Close calls closing functions of each registered recorder.
 func (L *Logger) Close() {
+	L.Lock(); defer L.Unlock()
 	if !L.initialised { return } // not initialised currently
 	if len(L.recorders) == 0 { return }
 	for _, rec := range L.recorders {
@@ -274,6 +284,7 @@ func (L *Logger) Close() {
 // (The default recorders list determinate which recorders will use for
 // writing if custom recorders are not specified in the log message.)
 func (L *Logger) AddToDefaults(recorders []RecorderID) error {
+	L.Lock(); defer L.Unlock()
 	if len(L.recorders) == 0 { return ErrNoRecorders }
 
 	// check registered recorders
@@ -313,6 +324,7 @@ main_iter:
 // (The default recorders list determinate which recorders will use for
 // writing if custom recorders are not specified in the log message.)
 func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
+	L.Lock(); defer L.Unlock()
 	if len(L.recorders) == 0 { return ErrNoRecorders }
 
 	// check registered recorders
@@ -355,6 +367,7 @@ func (L *Logger) ChangeSeverityOrder(
 	recorder RecorderID, srcFlag SevFlagT, dir ssDirection, trgFlag SevFlagT,
 ) error {
 	
+	L.Lock(); defer L.Unlock()
 	if len(L.recorders) == 0 { return ErrNoRecorders }
 	if _, exist := L.recorders[recorder]; !exist {
 		return ErrWrongRecorderID
@@ -402,6 +415,7 @@ func (L *Logger) ChangeSeverityOrder(
 
 // SetSeverityMask sets which severities allowed for the given recorder in this logger.
 func (L *Logger) SetSeverityMask(recorder RecorderID, flags SevFlagT) error {
+	L.Lock(); defer L.Unlock()
 	if L.severityMasks == nil { return internalError(ieCritical, "bumped to nil") }
 	if len(L.recorders) == 0 { return ErrNoRecorders }
 
@@ -434,6 +448,7 @@ func (L *Logger) Write(severity SevFlagT, msgFmt string, msgArgs ...interface{})
 // If custom recorders are not specified, uses default recorders. Returns nil
 // on success and error on fail.
 func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
+	L.Lock(); defer L.Unlock()
 	if !L.initialised { return ErrNotInitialised }
 	if L.severityMasks == nil || L.severityOrder == nil {
 		return internalError(ieCritical, "bumped to nil") }
@@ -496,7 +511,7 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 // a severity argument should have only one of these flags. So it ensures
 // (accordingly to the depth order) that severity value provide only one
 // flag.
-func (L *Logger) severityProtector(orderlist *list.List, flags *SevFlagT) error {
+func (L *Logger) severityProtector(orderlist *list.List, flags *SevFlagT) error { // NO LOCK
 	if orderlist == nil || orderlist.Len() == 0 {
 		return internalError(ieCritical, "wrong 'orderlist' parameter value")
 	}
