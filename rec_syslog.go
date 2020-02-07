@@ -16,7 +16,7 @@ type syslogRecorder struct {
 	logger      *syslog.Writer
 
 	// says which function to use for each severity
-	sevBindings map[SevFlagT]syslog.Priority
+	sevBindings map[MsgFlagT]syslog.Priority
 }
 
 // NewSyslogRecorder allocates and returns a new syslog recorder.
@@ -24,29 +24,28 @@ func NewSyslogRecorder(prefix string) *syslogRecorder {
 	r := new(syslogRecorder)
 	r.refCounter = 0
 	r.prefix = prefix
-	r.sevBindings = make(map[SevFlagT]syslog.Priority)
+	r.sevBindings = make(map[MsgFlagT]syslog.Priority)
 
 	// default bindings
+	r.sevBindings[Emerg]    = syslog.LOG_EMERG
+	r.sevBindings[Alert]    = syslog.LOG_ALERT
 	r.sevBindings[Critical] = syslog.LOG_CRIT
 	r.sevBindings[Error]    = syslog.LOG_ERR
 	r.sevBindings[Warning]  = syslog.LOG_WARNING
 	r.sevBindings[Notice]   = syslog.LOG_NOTICE
 	r.sevBindings[Info]     = syslog.LOG_INFO
-	r.sevBindings[Debug1]   = syslog.LOG_DEBUG
-	r.sevBindings[Debug2]   = syslog.LOG_DEBUG
-	r.sevBindings[Debug3]   = syslog.LOG_DEBUG
+	r.sevBindings[Debug]    = syslog.LOG_DEBUG
 
-	r.sevBindings[Custom1]  = syslog.LOG_INFO
-	r.sevBindings[Custom2]  = syslog.LOG_INFO
-	r.sevBindings[Custom3]  = syslog.LOG_INFO
-	r.sevBindings[Custom4]  = syslog.LOG_INFO
+	r.sevBindings[CustomB1] = syslog.LOG_INFO
+	r.sevBindings[CustomB2] = syslog.LOG_INFO
 
 	return r
 }
 
 // BindSeverityFlag rebinds severity flag to the new syslog priority code.
-func (R *syslogRecorder) BindSeverityFlag(severity SevFlagT, priority syslog.Priority) error {
+func (R *syslogRecorder) BindSeverityFlag(severity MsgFlagT, priority syslog.Priority) error {
 	R.Lock(); defer R.Unlock()
+	severity = severity &^ severityShadowMask
 	if _, exist := R.sevBindings[severity]; !exist {
 		return ErrWrongFlagValue
 	}
@@ -101,7 +100,8 @@ func (R *syslogRecorder) write(msg LogMsg) error {
 		msgData = R.format(&msg)
 	}
 
-	if priority, exist := R.sevBindings[msg.severity]; exist {
+	sev := msg.flags &^ severityShadowMask
+	if priority, exist := R.sevBindings[sev]; exist {
 		switch priority {        // WRITE
 		case syslog.LOG_EMERG:   R.logger.Emerg(msgData)
 		case syslog.LOG_ALERT:   R.logger.Alert(msgData)

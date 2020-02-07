@@ -82,5 +82,5 @@ func IoDirectDefaultFormatter(msg *LogMsg) string {
 	h, m, s := msg.GetTime().Clock()
 	yy, mm, dd := msg.GetTime().Date()
 	return fmt.Sprintf("%4d/%02d/%02d %02d:%02d:%02d %s %s",
-		yy, mm, dd, h, m, s, msg.GetSeverity().String(), msg.GetContent())
+		yy, mm, dd, h, m, s, msg.GetFlags().String(), msg.GetContent())
 }

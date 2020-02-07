@@ -53,28 +53,31 @@ func TestLogMsg(t *testing.T) {
 		t.Errorf("%s", err.Error()); return
 	} else { defer logger.Close() }
 
-	msg := NewLogMsg().Severity(Critical)
+	msg := NewLogMsg().SetFlags(Critical)
 	msg.Setf("2 the message header")
 	msg.Addf("\nnew line (manual)")
 	msg.Addf_ln("new line (auto)")
 	if err := logger.WriteMsg(nil, msg); err != nil {
 		t.Errorf("%s", err.Error())
 	}
-	if msg.GetSeverity() != Critical || msg.GetContent() !=
+	if (msg.GetFlags() &^ severityShadowMask) != Critical || msg.GetContent() !=
 		"2 the message header\nnew line (manual)\nnew line (auto)" {
 		t.Errorf("error, unexpected message data\n%v", msg)
 	}
 
-	msg = NewLogMsg().Severity(Debug1)
+	msg = NewLogMsg().SetFlags(Debug)
 	msg.Addf("2 original message\nsecond line")
 	originalTime := msg.GetTime()
-	msg.Setf("2 overwritten message").Severity(Info).UpdateTime()
+	msg.Setf("2 overwritten message").SetFlags(Info).UpdateTime()
 	if err := logger.WriteMsg(nil, msg); err != nil {
 		t.Errorf("%s", err.Error())
 	}
-	if msg.GetSeverity() != Info { t.Errorf("error, unexpected message severity") }
-	if msg.GetTime() == originalTime { t.Errorf("error, unexpected message time value") }
-	if msg.GetContent() != "2 overwritten message" { t.Errorf("error, unexpected message data") }
+	if (msg.GetFlags() &^ severityShadowMask) != Info {
+		t.Errorf("error, unexpected message severity") }
+	if msg.GetTime() == originalTime {
+		t.Errorf("error, unexpected message time value") }
+	if msg.GetContent() != "2 overwritten message" {
+		t.Errorf("error, unexpected message data") }
 }
 
 func TestSeverityOrder(t *testing.T) {
@@ -88,14 +91,14 @@ func TestSeverityOrder(t *testing.T) {
 		t.Errorf("%s", err.Error()); return
 	} else { defer logger.Close() }
 
-	var testFlags SevFlagT = Error | Info
+	var testFlags MsgFlagT = Error | Info
 	if err := logger.severityProtector(
 		logger.severityOrder[RecorderID("direct")], &testFlags);
 	err != nil { t.Errorf("FAIL: %s", err.Error()); return }
 	if testFlags != Error {
 		t.Errorf("severityProtector() fail\nresult:   %012b\nexpected: %012b", testFlags, Error)
 	}
-	msg := NewLogMsg().Severity(Error | Info).Setf("3 should be error")
+	msg := NewLogMsg().SetFlags(Error | Info).Setf("3 should be error")
 	if err := logger.WriteMsg(nil, msg); err != nil {
 		t.Logf("write error: %s", err.Error())
 	}
@@ -112,7 +115,7 @@ func TestSeverityOrder(t *testing.T) {
 	if testFlags != Info {
 		t.Errorf("severityProtector() fail\nresult:   %012b\nexpected: %012b", testFlags, Info)
 	}
-	msg.UpdateTime().Severity(Error | Info).Setf("3 should be info")
+	msg.UpdateTime().SetFlags(Error | Info).Setf("3 should be info")
 	if err := logger.WriteMsg(nil, msg); err != nil {
 		t.Logf("write error: %s", err.Error())
 	}
@@ -130,38 +133,40 @@ func TestSeverityMask(t *testing.T) {
 	} else { defer logger.Close() }
 
 	// > include
-	if err := logger.SetSeverityMask("direct", Error | Notice | Info | Debug1); err != nil {
+	if err := logger.SetSeverityMask("direct", Error | Notice | Info | Debug); err != nil {
 		t.Errorf("%s", err.Error()); return
 	} else {
-		t.Logf("sev mask: %012b (%v)",
+		t.Logf("sev mask: %016b (%v)",
 			logger.severityMasks["direct"],
 			logger.severityMasks["direct"])
 	}
-	if v:= logger.severityMasks["direct"]; v != 0x3A {
-		t.Errorf("unexpected mask value\ncurrent:  %012b\nexpected: %012b", v, 0x3A)
+	if v:= logger.severityMasks["direct"]; v != 0xE8 {
+		t.Errorf("unexpected mask value\ncurrent:  %016b\nexpected: %016b", v, 0x3A)
 	}
 
+	logger.Write(Emerg, "4 should be hidden")
+	logger.Write(Alert, "4 should be hidden")
 	logger.Write(Critical, "4 should be hidden")
 	//logger.Write(Error,    "4 should be visible")
 	logger.Write(Warning,  "4 should be hidden")
 	//logger.Write(Notice,   "4 should be visible")
 	//logger.Write(Info,     "4 should be visible")
-	//logger.Write(Debug1,   "4 should be visible")
-	logger.Write(Debug2,   "4 should be hidden")
-	logger.Write(Debug3,   "4 should be hidden")
+	//logger.Write(Debug,   "4 should be visible")
 
 	// > exclude
 	if err := logger.SetSeverityMask("direct", SeverityAll &^ Critical &^ Error); err != nil {
 		t.Errorf("%s", err.Error()); return
 	} else {
-		t.Logf("sev mask: %012b (%v)",
+		t.Logf("sev mask: %016b (%v)",
 			logger.severityMasks["direct"],
 			logger.severityMasks["direct"])	
 	}
-	if v := logger.severityMasks["direct"]; v != 0xFFC {
-		t.Errorf("unexpected mask value\ncurrent:  %012b\nexpected: %012b", v, 0xFFC)
+	if v := logger.severityMasks["direct"]; v != 0x30F3 {
+		t.Errorf("unexpected mask value\ncurrent:  %016b\nexpected: %016b", v, 0xFFC)
 	}
 
+	//logger.Write(Emerg, "4 should be visible")
+	//logger.Write(Alert, "4 should be visible")
 	logger.Write(Critical, "4 should be hidden")
 	logger.Write(Error,    "4 should be hidden")
 	//logger.Write(Warning,  "4 should be visible")

@@ -12,54 +12,66 @@ import (
     xxxx xxxx xxxx xxxx
     -+-- --+- ----+----
      |     |      |
-attributes |  defeult severity flags
-        custom severity flags
+ custom    |  default severity flags
+ flags  default attributes
+
+custom flags bits:
+    --xx : severity
+    xx-- : attributes
+
 */
 
-type SevFlagT uint16
+type MsgFlagT uint16
 
 const ( // severity flags (log level)
-	Critical SevFlagT = 0x01  // 0000 0000 0000 0001
-	Error    SevFlagT = 0x02  // 0000 0000 0000 0010
-	Warning  SevFlagT = 0x04  // 0000 0000 0000 0100
-	Notice   SevFlagT = 0x08  // 0000 0000 0000 1000
-	Info     SevFlagT = 0x10  // 0000 0000 0001 0000
-	Debug1   SevFlagT = 0x20  // 0000 0000 0010 0000
-	Debug2   SevFlagT = 0x40  // 0000 0000 0100 0000
-	Debug3   SevFlagT = 0x80  // 0000 0000 1000 0000
+	Emerg    MsgFlagT = 0x01   // 0000 0000 0000 0001
+	Alert    MsgFlagT = 0x02   // 0000 0000 0000 0010
+	Critical MsgFlagT = 0x04   // 0000 0000 0000 0100
+	Error    MsgFlagT = 0x08   // 0000 0000 0000 1000
+	Warning  MsgFlagT = 0x10   // 0000 0000 0001 0000
+	Notice   MsgFlagT = 0x20   // 0000 0000 0010 0000
+	Info     MsgFlagT = 0x40   // 0000 0000 0100 0000
+	Debug    MsgFlagT = 0x80   // 0000 0000 1000 0000
 
-	Custom1  SevFlagT = 0x100 // 0000 0001 0000 0000
-	Custom2  SevFlagT = 0x200 // 0000 0010 0000 0000
-	Custom3  SevFlagT = 0x300 // 0000 0100 0000 0000
-	Custom4  SevFlagT = 0x400 // 0000 1000 0000 0000
+	CustomB1  MsgFlagT = 0x1000 // 0001 0000 0000 0000
+	CustomB2  MsgFlagT = 0x2000 // 0010 0000 0000 0000
 )
 
-func (S SevFlagT) String() string {
-	switch S {
+const ( // attribute flags
+	StackTrace MsgFlagT = 0x100  // 0000 0001 0000 0000
+
+	CustomB3    MsgFlagT = 0x4000 // 0100 0000 0000 0000
+	CustomB4    MsgFlagT = 0x8000 // 1000 0000 0000 0000
+)
+
+func (f MsgFlagT) String() string {
+	switch f {
+	case Emerg:    return "EMERG"
+	case Alert:    return "ALERT"
 	case Critical: return "CRIT"
 	case Error:    return "ERROR"
 	case Warning:  return "WARNING"
 	case Notice:   return "NOTICE"
 	case Info:     return "INFO"
-	case Debug1:   return "DEBUG-1"
-	case Debug2:   return "DEBUG-2"
-	case Debug3:   return "DEBUG-3"
+	case Debug:    return "DEBUG"
 	default:
-		return fmt.Sprintf("0x%x", int(S))
+		return fmt.Sprintf("0x%x", int(f))
 	}
 }
 
 // bit-reset (reversed) mask for severity flags
-const severityShadowMask SevFlagT = 0xF000
+const severityShadowMask MsgFlagT = 0xCF00
 // bit-reset (reversed) mask for attribute flags
-const attributeShadowMask SevFlagT = 0x0FFF
+const attributeShadowMask MsgFlagT = 0x30FF
 
 // predefined severity sets
-const SeverityAll    SevFlagT = 0xFFF
-const SeverityMajor  SevFlagT = 0x00F
-const SeverityMinor  SevFlagT = 0x0F0
-const SeverityDebug  SevFlagT = 0x0E0
-const SeverityCustom SevFlagT = 0xF00
+const SeverityAll    MsgFlagT = 0x30FF
+const SeverityMajor  MsgFlagT = 0x001F
+const SeverityMinor  MsgFlagT = 0x00E0
+const SeverityCustom MsgFlagT = 0x3000
+
+// used when severity is 0
+const defaultSeverity = Info
 
 // ssDirection describes two-way directions.
 // It primarily used in severity order lists.
@@ -67,9 +79,26 @@ type ssDirection bool
 const Before ssDirection = true
 const After ssDirection = false
 
+func defaultSeverityOrder() *list.List {
+	orderlist := list.New().Init()
+	orderlist.PushBack(Emerg)
+	orderlist.PushBack(Alert)
+	orderlist.PushBack(Critical)
+	orderlist.PushBack(Error)
+	orderlist.PushBack(Warning)
+	orderlist.PushBack(Notice)
+	orderlist.PushBack(Info)
+	orderlist.PushBack(Debug)
+	orderlist.PushBack(CustomB1)
+	orderlist.PushBack(CustomB2)
+	return orderlist
+}
+
+// -----------------------------------------------------------------------------
+
 type LogMsg struct {
 	time time.Time
-	severity SevFlagT
+	flags MsgFlagT
 	content string
 	Data interface{}
 }
@@ -81,7 +110,7 @@ func NewLogMsg() *LogMsg {
 	return lm
 }
 
-// Message builds and returns simple message with undefined severity.
+// Message builds and returns simple message with default severity.
 func Message(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	lm := new(LogMsg)
 	lm.time = time.Now()
@@ -89,9 +118,9 @@ func Message(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	return lm
 }
 
-// Severity sets severity value for the message.
-func (LM *LogMsg) Severity(severity SevFlagT) *LogMsg {
-	LM.severity = severity &^ severityShadowMask; return LM
+// SetFlags sets severity and arrtibute flags for the message.
+func (LM *LogMsg) SetFlags(flags MsgFlagT) *LogMsg {
+	LM.flags = flags; return LM
 }
 
 // UpdateTime updates message's time to current time.
@@ -99,24 +128,24 @@ func (LM *LogMsg) UpdateTime() *LogMsg {
 	LM.time = time.Now(); return LM
 }
 
-// Add attaches new string to the end of the existing message text.
+// Addf attaches new string to the end of the existing message text.
 func (LM *LogMsg) Addf(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	LM.content += fmt.Sprintf(msgFmt, msgArgs...); return LM
 }
 
-// Addln adds new string to existing message text as a new line.
+// Addln_f adds new string to existing message text as a new line.
 func (LM *LogMsg) Addf_ln(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	LM.content += "\n" + fmt.Sprintf(msgFmt, msgArgs...); return LM
 }
 
-// Set resets current message text and sets the given string.
+// Setf resets current message text and sets the given string.
 func (LM *LogMsg) Setf(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	LM.content = fmt.Sprintf(msgFmt, msgArgs...); return LM
 }
 
-func (LM *LogMsg) GetTime()     time.Time { return LM.time }
-func (LM *LogMsg) GetSeverity() SevFlagT  { return LM.severity }
-func (LM *LogMsg) GetContent()  string    { return LM.content }
+func (LM *LogMsg) GetTime()    time.Time { return LM.time }
+func (LM *LogMsg) GetFlags()   MsgFlagT  { return LM.flags }
+func (LM *LogMsg) GetContent() string    { return LM.content }
 
 // -----------------------------------------------------------------------------
 
@@ -146,7 +175,7 @@ type Logger struct {
 	// TODO: description
 
 	// determines what severities each recorder will write
-	severityMasks map[RecorderID]SevFlagT	
+	severityMasks map[RecorderID]MsgFlagT	
 
 	// determines severity order for each recorder
 	severityOrder map[RecorderID]*list.List
@@ -157,7 +186,7 @@ func NewLogger() *Logger {
 	l := new(Logger)
 	l.recorders = make(map[RecorderID]logRecorder)
 	l.recordersState = make(map[RecorderID]bool)
-	l.severityMasks = make(map[RecorderID]SevFlagT)
+	l.severityMasks = make(map[RecorderID]MsgFlagT)
 	l.severityOrder = make(map[RecorderID]*list.List)
 	return l
 }
@@ -197,7 +226,7 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 
 	// recorder works with all severities by default
 	if L.severityMasks == nil {
-		L.severityMasks = make(map[RecorderID]SevFlagT)
+		L.severityMasks = make(map[RecorderID]MsgFlagT)
 	}
 	L.severityMasks[id] = SeverityAll
 
@@ -218,20 +247,7 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 	if L.severityOrder == nil {
 		L.severityOrder = make(map[RecorderID]*list.List)
 	}
-	L.severityOrder[id] = list.New().Init()
-	// default severity order (up to down)
-	L.severityOrder[id].PushBack(Critical)
-	L.severityOrder[id].PushBack(Error)
-	L.severityOrder[id].PushBack(Warning)
-	L.severityOrder[id].PushBack(Notice)
-	L.severityOrder[id].PushBack(Info)
-	L.severityOrder[id].PushBack(Debug1)
-	L.severityOrder[id].PushBack(Debug2)
-	L.severityOrder[id].PushBack(Debug3)
-	L.severityOrder[id].PushBack(Custom1)
-	L.severityOrder[id].PushBack(Custom2)
-	L.severityOrder[id].PushBack(Custom3)
-	L.severityOrder[id].PushBack(Custom4)
+	L.severityOrder[id] = defaultSeverityOrder()
 
 	return nil
 }
@@ -364,7 +380,7 @@ func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
 //
 // The function returns nil on success and error overwise.
 func (L *Logger) ChangeSeverityOrder(
-	recorder RecorderID, srcFlag SevFlagT, dir ssDirection, trgFlag SevFlagT,
+	recorder RecorderID, srcFlag MsgFlagT, dir ssDirection, trgFlag MsgFlagT,
 ) error {
 	
 	L.Lock(); defer L.Unlock()
@@ -377,9 +393,12 @@ func (L *Logger) ChangeSeverityOrder(
 	}
 
 	// DISABLED
-	//srcFlag = srcFlag &^ 0xF0FF // only custom flags are moveable
-
+	//srcFlag = srcFlag &^ 0xCFFF // only custom flags are moveable
+	srcFlag = srcFlag &^ severityShadowMask
+	trgFlag = trgFlag &^ severityShadowMask
 	if srcFlag == 0 { return ErrWrongFlagValue }	
+	if trgFlag == 0 { return ErrWrongFlagValue }
+	if srcFlag == trgFlag { return ErrWrongFlagValue }
 		
 	orderlist, exist := L.severityOrder[recorder]
 	if !exist {
@@ -388,7 +407,7 @@ func (L *Logger) ChangeSeverityOrder(
 	var src *list.Element
 	var trg *list.Element
 	for e := orderlist.Front(); e != nil; e = e.Next() {
-		if sev, ok := e.Value.(SevFlagT); !ok {
+		if sev, ok := e.Value.(MsgFlagT); !ok {
 			return internalError(ieUnreachable, "unexpected value type")
 		} else {
 			if sev == srcFlag { src = e
@@ -400,8 +419,10 @@ func (L *Logger) ChangeSeverityOrder(
 		}
 	}
 	
-	if src == nil { return ErrWrongFlagValue }
-	if trg == nil { return ErrWrongFlagValue }
+	if src == nil { return internalError(ieUnreachable,
+		"can't find src flag (%012b)", srcFlag) }
+	if trg == nil { return internalError(ieUnreachable,
+		"can't find trg flag (%012b)", trgFlag) }
 	
 	// change order
 	if dir == Before {
@@ -414,7 +435,7 @@ func (L *Logger) ChangeSeverityOrder(
 }
 
 // SetSeverityMask sets which severities allowed for the given recorder in this logger.
-func (L *Logger) SetSeverityMask(recorder RecorderID, flags SevFlagT) error {
+func (L *Logger) SetSeverityMask(recorder RecorderID, flags MsgFlagT) error {
 	L.Lock(); defer L.Unlock()
 	if L.severityMasks == nil { return internalError(ieCritical, "bumped to nil") }
 	if len(L.recorders) == 0 { return ErrNoRecorders }
@@ -435,11 +456,11 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags SevFlagT) error {
 	return nil
 }
 
-// Write builds the message with format line and specified severity flag, then calls
+// Write builds the message with format line and specified message flags, then calls
 // WriteMsg. It allows avoiding calling fmt.Sprintf() function and LogMsg's functions
 // directly, it wraps them. Returns nil in case of success otherwise returns an error.
-func (L *Logger) Write(severity SevFlagT, msgFmt string, msgArgs ...interface{}) error {
-	msg := NewLogMsg().Severity(severity)
+func (L *Logger) Write(flags MsgFlagT, msgFmt string, msgArgs ...interface{}) error {
+	msg := NewLogMsg().SetFlags(flags)
 	msg.Setf(msgFmt, msgArgs...)
 	return L.WriteMsg(nil, msg)
 }
@@ -474,20 +495,26 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 		recorders = L.defaults
 	}
 
-	for _, recID := range recorders {
-		if (*msg).severity == 0 { (*msg).severity = Info } // <---------------------+
-		ie := L.severityProtector(L.severityOrder[recID], &((*msg).severity) ) //   |
-		if ie != nil {                                                         //   |
-			br.Fail(recID, ie);                                                  //   |
-			continue                                                             //   |
-		}                                                                      //   |
-		if sevMask, exist := L.severityMasks[recID]; exist {                   //   |
-			//if (*msg).severity == 0 { // <------------------------------------------+
-			//	ie = internalError(ieUnreachable, "severity is 0")
-			//	br.Fail(recID, ie)
-			//	continue
-			//}
-			if (*msg).severity & sevMask > 0 { // severity allowed
+	//severity := (*msg).flags &^ severityShadowMask
+	//attirbutes := (*msg).flags &^ attributeShadowMask
+	if (*msg).flags &^ severityShadowMask == 0 {
+		(*msg).flags |= defaultSeverity
+	}
+
+	for _, recID := range recorders {	
+		ie := L.severityProtector(L.severityOrder[recID], &((*msg).flags) )
+		if ie != nil {
+			br.Fail(recID, ie);
+			continue
+		}
+		if sevMask, exist := L.severityMasks[recID]; exist {
+			/* already checked
+			if (*msg).flags &^ severityShadowMask == 0 {
+				ie = internalError(ieUnreachable, "severity is 0")
+				br.Fail(recID, ie)
+				continue
+			} */
+			if ((*msg).flags &^ severityShadowMask) & sevMask > 0 { // severity allowed
 				rec := L.recorders[recID] // recorder id is valid, already checked
 				if err := rec.write(*msg); err != nil {
 					br.Fail(recID, err)
@@ -511,14 +538,15 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 // a severity argument should have only one of these flags. So it ensures
 // (accordingly to the depth order) that severity value provide only one
 // flag.
-func (L *Logger) severityProtector(orderlist *list.List, flags *SevFlagT) error { // NO LOCK
+func (L *Logger) severityProtector(orderlist *list.List, flags *MsgFlagT) error { // NO LOCK
 	if orderlist == nil || orderlist.Len() == 0 {
 		return internalError(ieCritical, "wrong 'orderlist' parameter value")
 	}
 	for e := orderlist.Front(); e != nil; e = e.Next() {
-		if sev, ok := e.Value.(SevFlagT); ok {
-			if *flags & sev > 0 {
-				*flags = sev
+		if sev, ok := e.Value.(MsgFlagT); ok {
+			if (*flags &^ severityShadowMask) & sev > 0 {
+				*flags = *flags &^ (^severityShadowMask) // reset
+				*flags = *flags | sev // set
 				return nil
 			}
 		} else {
