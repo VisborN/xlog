@@ -245,7 +245,11 @@ func TestStackTrace(t *testing.T) {
 		t.Errorf("%s", err.Error()); return
 	} else { defer logger.Close() }
 
-	if err := logger.Write(StackTrace, "5 msg with stack trace"); err != nil {
+	if err := logger.Write(StackTrace, "5 msg with stack trace (full)"); err != nil {
+		t.Errorf("write error: %s", err.Error())
+	}
+
+	if err := logger.Write(StackTraceShort | StackTrace, "5 msg with stack trace (short)"); err != nil {
 		t.Errorf("write error: %s", err.Error())
 	}
 }

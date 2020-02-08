@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 	"sync"
+	"strings"
 	"runtime/debug"
 	"container/list"
 )
@@ -34,15 +35,16 @@ const ( // severity flags (log level)
 	Info     MsgFlagT = 0x40   // 0000 0000 0100 0000
 	Debug    MsgFlagT = 0x80   // 0000 0000 1000 0000
 
-	CustomB1  MsgFlagT = 0x1000 // 0001 0000 0000 0000
-	CustomB2  MsgFlagT = 0x2000 // 0010 0000 0000 0000
+	CustomB1 MsgFlagT = 0x1000 // 0001 0000 0000 0000
+	CustomB2 MsgFlagT = 0x2000 // 0010 0000 0000 0000
 )
 
 const ( // attribute flags
-	StackTrace MsgFlagT = 0x100  // 0000 0001 0000 0000
+	StackTrace      MsgFlagT = 0x100 // 0000 0001 0000 0000
+	StackTraceShort MsgFlagT = 0x800 // 0000 1000 0000 0000
 
-	CustomB3   MsgFlagT = 0x4000 // 0100 0000 0000 0000
-	CustomB4   MsgFlagT = 0x8000 // 1000 0000 0000 0000
+	CustomB3 MsgFlagT = 0x4000 // 0100 0000 0000 0000
+	CustomB4 MsgFlagT = 0x8000 // 1000 0000 0000 0000
 )
 
 func (f MsgFlagT) String() string {
@@ -496,7 +498,23 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 		recorders = L.defaults
 	}
 
-	if (*msg).flags & StackTrace > 0 {
+	if (*msg).flags & StackTraceShort > 0 {
+		st := debug.Stack()
+		str := "---------- stack trace ----------"
+		lines := strings.Split(string(st), "\n")
+		// select strings
+		var accumulator []string
+		for i := 1; i < len(lines) - 1; i += 2 {
+			accumulator = append(accumulator, lines[i])
+		}
+		// make a result
+		str += "   " + lines[0] + "\n"
+		for i:=1; i < len(accumulator); i++ {
+			str += accumulator[i] + "\n"
+		}
+		str += "---------------------------------"
+		(*msg).content += "\n" + str
+	} else if (*msg).flags & StackTrace > 0 {
 		str := "---------- stack trace ----------"
 		str += "   " + string(debug.Stack())
 		str += "---------------------------------"
