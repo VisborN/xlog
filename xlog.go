@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 	"sync"
+	"runtime/debug"
 	"container/list"
 )
 
@@ -40,8 +41,8 @@ const ( // severity flags (log level)
 const ( // attribute flags
 	StackTrace MsgFlagT = 0x100  // 0000 0001 0000 0000
 
-	CustomB3    MsgFlagT = 0x4000 // 0100 0000 0000 0000
-	CustomB4    MsgFlagT = 0x8000 // 1000 0000 0000 0000
+	CustomB3   MsgFlagT = 0x4000 // 0100 0000 0000 0000
+	CustomB4   MsgFlagT = 0x8000 // 1000 0000 0000 0000
 )
 
 func (f MsgFlagT) String() string {
@@ -493,6 +494,13 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 		}
 	} else { // use default recorders
 		recorders = L.defaults
+	}
+
+	if (*msg).flags & StackTrace > 0 {
+		str := "---------- stack trace ----------"
+		str += "   " + string(debug.Stack())
+		str += "---------------------------------"
+		(*msg).content += "\n" + str
 	}
 
 	//severity := (*msg).flags &^ severityShadowMask

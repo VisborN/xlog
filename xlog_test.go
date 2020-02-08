@@ -234,6 +234,22 @@ func TestInitialisation(t *testing.T) {
 	fShowData()
 }
 
+func TestStackTrace(t *testing.T) {
+	logger := NewLogger()
+	logFile, err := os.OpenFile("test.log", os.O_APPEND | os.O_WRONLY, 0644)
+	if err != nil { t.Errorf("file open fail: %s", err.Error()); return }
+	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile,).OnClose(
+		func(interface{}){ logFile.Close() },
+	)); err != nil { t.Errorf("recorder register fail: direct"); return }
+	if err := logger.Initialise(); err != nil {
+		t.Errorf("%s", err.Error()); return
+	} else { defer logger.Close() }
+
+	if err := logger.Write(StackTrace, "5 msg with stack trace"); err != nil {
+		t.Errorf("write error: %s", err.Error())
+	}
+}
+
 var testValueName string
 var testValueOutpFlag bool
 func testValue(t *testing.T, value int, expected int) bool { // utility function
@@ -279,10 +295,10 @@ func TestRefCounters(t *testing.T) {
 	// ----------
 
 	t.Log("--> writing to loggers")
-	if err := logger1.Write(Info, "5 logger 1 message"); err != nil {
+	if err := logger1.Write(Info, "6 logger 1 message"); err != nil {
 		t.Errorf("logger 1 write error: %s", err.Error())
 	}
-	if err := logger2.Write(Info, "5 logger 2 message"); err != nil {
+	if err := logger2.Write(Info, "6 logger 2 message"); err != nil {
 		t.Errorf("logger 2 write error: %s", err.Error())
 	}
 
@@ -293,13 +309,13 @@ func TestRefCounters(t *testing.T) {
 	if !testValue(t, recorder.refCounter, 1) { return }	
 
 	// logger.WriteMsg() protection test
-	if err := logger1.Write(Info, "5 this write call should be failed"); err == nil {
+	if err := logger1.Write(Info, "6 this write call should be failed"); err == nil {
 		t.Errorf("FAIL (1), this write call should return error\n"+
 			"we shouldn't be able to write to the closed logger")
 		return
 	}
 
-	if err := logger2.Write(Info, "5 should be visible"); err != nil {
+	if err := logger2.Write(Info, "6 should be visible"); err != nil {
 		t.Errorf("write error after 1st close: %s", err.Error())
 		return
 	}	
