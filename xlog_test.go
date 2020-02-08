@@ -234,6 +234,32 @@ func TestInitialisation(t *testing.T) {
 	fShowData()
 }
 
+func TestUnregistering(t *testing.T) {
+	logger := NewLogger()	
+	logFile, err := os.OpenFile("test.log", os.O_APPEND | os.O_CREATE | os.O_WRONLY, 0644)
+	if err != nil { t.Errorf("file open fail: %s", err.Error()); return }
+	logFile.Write([]byte("------------------------------------------\n"))
+	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile).OnClose(
+		func(interface{}){
+			logFile.Close()
+			//fmt.Printf("<FCLOSED>\n")
+		},
+	)); err != nil { t.Errorf("recorder register fail: direct") }
+	if err := logger.RegisterRecorder("syslog", NewSyslogRecorder("xlog-test")); err != nil {
+		t.Errorf("recorder register fail: syslog")
+	}
+	if err := logger.Initialise(); err != nil {
+		t.Errorf("initialisation fail: %s", err.Error())
+		return
+	}
+
+	t.Logf("%v", logger)
+	if err := logger.UnregisterRecorder("direct"); err != nil {
+		t.Errorf("unregister fail: %s", err.Error())
+	}
+	t.Logf("%v", logger)
+}
+
 func TestStackTrace(t *testing.T) {
 	logger := NewLogger()
 	logFile, err := os.OpenFile("test.log", os.O_APPEND | os.O_WRONLY, 0644)

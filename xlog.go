@@ -255,6 +255,42 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 	return nil
 }
 
+func (L *Logger) UnregisterRecorder(id RecorderID) error {
+	L.Lock(); defer L.Unlock()
+	if len(L.recorders) == 0 { return ErrNoRecorders }
+	if L.recordersState == nil {
+		return internalError(ieCritical, "bumped to nil")
+	}
+
+	// close recorder if necessary
+	if rec, exist := L.recorders[id]; !exist {
+		return ErrWrongRecorderID
+	} else {
+		if state, exist := L.recordersState[id]; !exist {
+			return internalError(ieUnreachable, ".recordersState: missing valid id")
+		} else {
+			if state {
+				rec.close()
+			}
+		}
+	}
+
+	for i, recID := range L.defaults {
+		if recID == id {
+			L.defaults[i] = L.defaults[len(L.defaults)-1]
+			L.defaults[len(L.defaults)-1] = RecorderID("")
+			L.defaults = L.defaults[:len(L.defaults)-1]
+		}
+	}
+
+	delete(L.recorders, id)
+	delete(L.recordersState, id)
+	delete(L.severityMasks, id)
+	delete(L.severityOrder, id)
+
+	return  nil
+}
+
 // Initialise calls initialisation functions of each registered recorder.
 func (L *Logger) Initialise() error {
 	L.Lock(); defer L.Unlock()
