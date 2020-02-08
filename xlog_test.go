@@ -182,6 +182,7 @@ func TestInitialisation(t *testing.T) {
 	logger := NewLogger()
 	dbgRecorder1 := t_newDebugRecorder("DR1", &dbgOutp)
 	dbgRecorder2 := t_newDebugRecorder("DR2", &dbgOutp)
+	dbgRecorder3 := t_newDebugRecorder("DR3", &dbgOutp)
 	logger.RegisterRecorder("debug-1", dbgRecorder1)
 	logger.RegisterRecorder("debug-2", dbgRecorder2)
 
@@ -232,6 +233,14 @@ func TestInitialisation(t *testing.T) {
 	err = logger.Initialise()
 	t.Logf("result: %v", err)
 	fShowData()
+
+	// reset flag at new recorder
+	if err := logger.RegisterRecorder("debug-3", dbgRecorder3); err != nil {
+		t.Errorf("rr initialisation error: %s", err.Error())
+	}
+	if logger.initialised == true {
+		t.Errorf("FAIL: logger still initialised after adding new recorder")
+	}
 }
 
 func TestUnregistering(t *testing.T) {

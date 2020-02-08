@@ -233,11 +233,14 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 	}
 	L.severityMasks[id] = SeverityAll
 
-	// check for ensure that it's correct
-	for _, recID := range L.defaults {
+	// check for duplicates
+	for i, recID := range L.defaults {
 		if recID == id {
 			// if id not found in recorders, defaults can't contain it
-			return internalError(ieUnreachable, ".defaults: found unexpected id")
+			//return internalError(ieUnreachable, ".defaults: found unexpected id")
+			L.defaults[i] = L.defaults[len(L.defaults)-1]
+			L.defaults[len(L.defaults)-1] = RecorderID("")
+			L.defaults = L.defaults[:len(L.defaults)-1]
 		}
 	}
 
@@ -251,6 +254,8 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 		L.severityOrder = make(map[RecorderID]*list.List)
 	}
 	L.severityOrder[id] = defaultSeverityOrder()
+
+	L.initialised = false;
 
 	return nil
 }
