@@ -47,6 +47,10 @@ const ( // attribute flags
 	CustomB4 MsgFlagT = 0x8000 // 1000 0000 0000 0000
 )
 
+const cRecAll = "__ALL__"
+
+var RecordersAll = []RecorderID{cRecAll}
+
 func (f MsgFlagT) String() string {
 	switch f {
 	case Emerg:
@@ -604,6 +608,15 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 				recorders[i] = recorders[len(recorders)-1]
 				recorders[len(recorders)-1] = ""
 				recorders = recorders[:len(recorders)-1]
+			}
+			if recID == cRecAll { // found ALL flag
+				// TODO: maybe allow only first pos?
+				// reset list and add all recorders
+				recorders = []RecorderID{}
+				for recID, _ := range L.recorders {
+					recorders = append(recorders, recID)
+				}
+				break
 			}
 		}
 	} else { // use default recorders
