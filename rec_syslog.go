@@ -46,7 +46,7 @@ func NewSyslogRecorder(prefix string) *syslogRecorder {
 func (R *syslogRecorder) BindSeverityFlag(severity MsgFlagT, priority syslog.Priority) error {
 	R.Lock()
 	defer R.Unlock()
-	severity = severity &^ severityShadowMask
+	severity = severity &^ SeverityShadowMask
 	if _, exist := R.sevBindings[severity]; !exist {
 		return ErrWrongFlagValue
 	}
@@ -113,7 +113,7 @@ func (R *syslogRecorder) write(msg LogMsg) error {
 		msgData = R.format(&msg)
 	}
 
-	sev := msg.flags &^ severityShadowMask
+	sev := msg.flags &^ SeverityShadowMask
 	if priority, exist := R.sevBindings[sev]; exist {
 		switch priority { // WRITE
 		case syslog.LOG_EMERG:

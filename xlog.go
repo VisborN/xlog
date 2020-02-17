@@ -482,8 +482,8 @@ func (L *Logger) ChangeSeverityOrder(
 
 	// DISABLED
 	//srcFlag = srcFlag &^ 0xCFFF // only custom flags are moveable
-	srcFlag = srcFlag &^ severityShadowMask
-	trgFlag = trgFlag &^ severityShadowMask
+	srcFlag = srcFlag &^ SeverityShadowMask
+	trgFlag = trgFlag &^ SeverityShadowMask
 	if srcFlag == 0 {
 		return ErrWrongFlagValue
 	}
@@ -559,7 +559,7 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags MsgFlagT) error {
 		_ = sevMask // THAT'S COMPLETELY STUPID, GOLANG
 	} else {
 		// zero is allowed (recorder blocked)
-		L.severityMasks[recorder] = flags &^ severityShadowMask
+		L.severityMasks[recorder] = flags &^ SeverityShadowMask
 	}
 
 	return nil
@@ -633,9 +633,9 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 		(*msg).content += "\n" + str
 	}
 
-	//severity := (*msg).flags &^ severityShadowMask
-	//attirbutes := (*msg).flags &^ attributeShadowMask
-	if (*msg).flags&^severityShadowMask == 0 {
+	//severity := (*msg).flags &^ SeverityShadowMask
+	//attirbutes := (*msg).flags &^ AttributeShadowMask
+	if (*msg).flags&^SeverityShadowMask == 0 {
 		(*msg).flags |= defaultSeverity
 	}
 
@@ -647,12 +647,12 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 		}
 		if sevMask, exist := L.severityMasks[recID]; exist {
 			/* already checked
-			if (*msg).flags &^ severityShadowMask == 0 {
+			if (*msg).flags &^ SeverityShadowMask == 0 {
 				ie = internalError(ieUnreachable, "severity is 0")
 				br.Fail(recID, ie)
 				continue
 			} */
-			if ((*msg).flags&^severityShadowMask)&sevMask > 0 { // severity allowed
+			if ((*msg).flags&^SeverityShadowMask)&sevMask > 0 { // severity allowed
 				rec := L.recorders[recID] // recorder id is valid, already checked
 				if err := rec.write(*msg); err != nil {
 					br.Fail(recID, err)
@@ -682,8 +682,8 @@ func (L *Logger) severityProtector(orderlist *list.List, flags *MsgFlagT) error 
 	}
 	for e := orderlist.Front(); e != nil; e = e.Next() {
 		if sev, ok := e.Value.(MsgFlagT); ok {
-			if (*flags&^severityShadowMask)&sev > 0 {
-				*flags = *flags &^ (^severityShadowMask) // reset
+			if (*flags&^SeverityShadowMask)&sev > 0 {
+				*flags = *flags &^ (^SeverityShadowMask) // reset
 				*flags = *flags | sev                    // set
 				return nil
 			}
