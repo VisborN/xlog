@@ -71,10 +71,10 @@ func (f MsgFlagT) String() string {
 }
 
 // bit-reset (reversed) mask for severity flags
-const severityShadowMask MsgFlagT = 0xCF00
+const SeverityShadowMask MsgFlagT = 0xCF00
 
 // bit-reset (reversed) mask for attribute flags
-const attributeShadowMask MsgFlagT = 0x30FF
+const AttributeShadowMask MsgFlagT = 0x30FF
 
 // predefined severity sets
 const SeverityAll MsgFlagT = 0x30FF
