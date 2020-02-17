@@ -1,18 +1,18 @@
 package xlog
 
 import (
-	"io"
 	"fmt"
+	"io"
 	"sync"
 )
 
 type ioDirectRecorder struct {
 	sync.Mutex
-	refCounter  int
-	prefix      string
-	format      FormatFunc
-	writer      io.Writer
-	closer      func(interface{})
+	refCounter int
+	prefix     string
+	format     FormatFunc
+	writer     io.Writer
+	closer     func(interface{})
 }
 
 // NewIoDirectRecorder allocates and returns a new io direct recorder.
@@ -36,29 +36,41 @@ func (R *ioDirectRecorder) initialise() error {
 }
 
 func (R *ioDirectRecorder) close() {
-	R.Lock(); defer R.Unlock()
-	if R.refCounter == 0 { return }
+	R.Lock()
+	defer R.Unlock()
+	if R.refCounter == 0 {
+		return
+	}
 	if R.refCounter == 1 {
-		if R.closer != nil { R.closer(nil) }
+		if R.closer != nil {
+			R.closer(nil)
+		}
 	}
 	R.refCounter--
 }
 
 // FormatFunc sets custom formatter function for this recorder.
 func (R *ioDirectRecorder) FormatFunc(f FormatFunc) *ioDirectRecorder {
-	R.Lock(); defer R.Unlock()
-	R.format = f; return R
+	R.Lock()
+	defer R.Unlock()
+	R.format = f
+	return R
 }
 
 // OnClose sets function which will be executed on close() function call.
 func (R *ioDirectRecorder) OnClose(f func(interface{})) *ioDirectRecorder {
-	R.Lock(); defer R.Unlock()
-	R.closer = f; return R
+	R.Lock()
+	defer R.Unlock()
+	R.closer = f
+	return R
 }
 
 func (R *ioDirectRecorder) write(msg LogMsg) error {
-	R.Lock(); defer R.Unlock()
-	if R.refCounter == 0 { return ErrNotInitialised }
+	R.Lock()
+	defer R.Unlock()
+	if R.refCounter == 0 {
+		return ErrNotInitialised
+	}
 	msgData := msg.content
 	if R.format != nil {
 		msgData = R.format(&msg)
@@ -68,7 +80,7 @@ func (R *ioDirectRecorder) write(msg LogMsg) error {
 	}
 	if msgData[len(msgData)-1] != '\n' {
 		msgData += "\n"
-	}	
+	}
 	if _, err := R.writer.Write([]byte(msgData)); err != nil {
 		return fmt.Errorf("writer error: %s", err.Error())
 	}

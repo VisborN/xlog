@@ -1,36 +1,48 @@
 package xlog
 
-import "os"
-import "fmt"
-import "time"
-import "testing"
+import (
+	"fmt"
+	"os"
+	"testing"
+	"time"
+)
 
 func TestGeneral(t *testing.T) {
-	logger := NewLogger()	
-	logFile, err := os.OpenFile("test.log", os.O_APPEND | os.O_CREATE | os.O_WRONLY, 0644)
-	if err != nil { t.Errorf("file open fail: %s", err.Error()); return }
+	logger := NewLogger()
+	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Errorf("file open fail: %s", err.Error())
+		return
+	}
 	logFile.Write([]byte("------------------------------------------\n"))
 	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile).OnClose(
-		func(interface{}){ logFile.Close() },
-	)); err != nil { t.Errorf("recorder register fail: direct") }
+		func(interface{}) { logFile.Close() },
+	)); err != nil {
+		t.Errorf("recorder register fail: direct")
+	}
 	if err := logger.RegisterRecorder("syslog", NewSyslogRecorder("xlog-test")); err != nil {
 		t.Errorf("recorder register fail: syslog")
 	}
 
-	if logger.NumberOfRecorders() == 0 { return }
+	if logger.NumberOfRecorders() == 0 {
+		return
+	}
 	if err := logger.Initialise(); err != nil {
-		t.Errorf("%s", err.Error()); return
-	} else { defer logger.Close() }
+		t.Errorf("%s", err.Error())
+		return
+	} else {
+		defer logger.Close()
+	}
 
 	if err := logger.Write(Error, "1 error message"); err != nil {
 		t.Errorf("%s", err.Error())
-	}; time.Sleep(2 * time.Second)
+	}
+	time.Sleep(2 * time.Second)
 	if err := logger.Write(Info, "1 info message"); err != nil {
 		t.Errorf("%s", err.Error())
 	}
 	if err := logger.WriteMsg([]RecorderID{"direct"},
-		Message("1 only for direct recorder"));
-	err != nil {
+		Message("1 only for direct recorder")); err != nil {
 		t.Errorf("%s", err.Error())
 		if br, ok := err.(BatchResult); ok {
 			msg := fmt.Sprintf("error msg: %s\n", br.Error())
@@ -44,14 +56,23 @@ func TestGeneral(t *testing.T) {
 
 func TestLogMsg(t *testing.T) {
 	logger := NewLogger()
-	logFile, err := os.OpenFile("test.log", os.O_APPEND | os.O_WRONLY, 0644)
-	if err != nil { t.Errorf("file open fail: %s", err.Error()); return }
-	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile,).OnClose(
-		func(interface{}){ logFile.Close() },
-	)); err != nil { t.Errorf("recorder register fail: direct"); return }
+	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Errorf("file open fail: %s", err.Error())
+		return
+	}
+	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile).OnClose(
+		func(interface{}) { logFile.Close() },
+	)); err != nil {
+		t.Errorf("recorder register fail: direct")
+		return
+	}
 	if err := logger.Initialise(); err != nil {
-		t.Errorf("%s", err.Error()); return
-	} else { defer logger.Close() }
+		t.Errorf("%s", err.Error())
+		return
+	} else {
+		defer logger.Close()
+	}
 
 	msg := NewLogMsg().SetFlags(Critical)
 	msg.Setf("2 the message header")
@@ -60,7 +81,7 @@ func TestLogMsg(t *testing.T) {
 	if err := logger.WriteMsg(nil, msg); err != nil {
 		t.Errorf("%s", err.Error())
 	}
-	if (msg.GetFlags() &^ severityShadowMask) != Critical || msg.GetContent() !=
+	if (msg.GetFlags()&^severityShadowMask) != Critical || msg.GetContent() !=
 		"2 the message header\nnew line (manual)\nnew line (auto)" {
 		t.Errorf("error, unexpected message data\n%v", msg)
 	}
@@ -73,28 +94,42 @@ func TestLogMsg(t *testing.T) {
 		t.Errorf("%s", err.Error())
 	}
 	if (msg.GetFlags() &^ severityShadowMask) != Info {
-		t.Errorf("error, unexpected message severity") }
+		t.Errorf("error, unexpected message severity")
+	}
 	if msg.GetTime() == originalTime {
-		t.Errorf("error, unexpected message time value") }
+		t.Errorf("error, unexpected message time value")
+	}
 	if msg.GetContent() != "2 overwritten message" {
-		t.Errorf("error, unexpected message data") }
+		t.Errorf("error, unexpected message data")
+	}
 }
 
 func TestSeverityOrder(t *testing.T) {
 	logger := NewLogger()
-	logFile, err := os.OpenFile("test.log", os.O_APPEND | os.O_WRONLY, 0644)
-	if err != nil { t.Errorf("file open fail: %s", err.Error()); return }
-	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile,).OnClose(
-		func(interface{}){ logFile.Close() },
-	)); err != nil { t.Errorf("recorder register fail: direct"); return }
+	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Errorf("file open fail: %s", err.Error())
+		return
+	}
+	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile).OnClose(
+		func(interface{}) { logFile.Close() },
+	)); err != nil {
+		t.Errorf("recorder register fail: direct")
+		return
+	}
 	if err := logger.Initialise(); err != nil {
-		t.Errorf("%s", err.Error()); return
-	} else { defer logger.Close() }
+		t.Errorf("%s", err.Error())
+		return
+	} else {
+		defer logger.Close()
+	}
 
 	var testFlags MsgFlagT = Error | Info
 	if err := logger.severityProtector(
-		logger.severityOrder[RecorderID("direct")], &testFlags);
-	err != nil { t.Errorf("FAIL: %s", err.Error()); return }
+		logger.severityOrder[RecorderID("direct")], &testFlags); err != nil {
+		t.Errorf("FAIL: %s", err.Error())
+		return
+	}
 	if testFlags != Error {
 		t.Errorf("severityProtector() fail\nresult:   %012b\nexpected: %012b", testFlags, Error)
 	}
@@ -105,13 +140,16 @@ func TestSeverityOrder(t *testing.T) {
 
 	// change it
 	if err := logger.ChangeSeverityOrder("direct", Info, Before, Error); err != nil {
-		t.Errorf("%s", err.Error()); return
+		t.Errorf("%s", err.Error())
+		return
 	}
 
 	testFlags = Error | Info
 	if err := logger.severityProtector(
-		logger.severityOrder[RecorderID("direct")], &testFlags);
-	err != nil { t.Errorf("FAIL: %s", err.Error()); return }
+		logger.severityOrder[RecorderID("direct")], &testFlags); err != nil {
+		t.Errorf("FAIL: %s", err.Error())
+		return
+	}
 	if testFlags != Info {
 		t.Errorf("severityProtector() fail\nresult:   %012b\nexpected: %012b", testFlags, Info)
 	}
@@ -123,24 +161,34 @@ func TestSeverityOrder(t *testing.T) {
 
 func TestSeverityMask(t *testing.T) {
 	logger := NewLogger()
-	logFile, err := os.OpenFile("test.log", os.O_APPEND | os.O_WRONLY, 0644)
-	if err != nil { t.Errorf("file open fail: %s", err.Error()); return }
-	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile,).OnClose(
-		func(interface{}){ logFile.Close() },
-	)); err != nil { t.Errorf("recorder register fail: direct"); return }
+	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Errorf("file open fail: %s", err.Error())
+		return
+	}
+	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile).OnClose(
+		func(interface{}) { logFile.Close() },
+	)); err != nil {
+		t.Errorf("recorder register fail: direct")
+		return
+	}
 	if err := logger.Initialise(); err != nil {
-		t.Errorf("%s", err.Error()); return
-	} else { defer logger.Close() }
+		t.Errorf("%s", err.Error())
+		return
+	} else {
+		defer logger.Close()
+	}
 
 	// > include
-	if err := logger.SetSeverityMask("direct", Error | Notice | Info | Debug); err != nil {
-		t.Errorf("%s", err.Error()); return
+	if err := logger.SetSeverityMask("direct", Error|Notice|Info|Debug); err != nil {
+		t.Errorf("%s", err.Error())
+		return
 	} else {
 		t.Logf("sev mask: %016b (%v)",
 			logger.severityMasks["direct"],
 			logger.severityMasks["direct"])
 	}
-	if v:= logger.severityMasks["direct"]; v != 0xE8 {
+	if v := logger.severityMasks["direct"]; v != 0xE8 {
 		t.Errorf("unexpected mask value\ncurrent:  %016b\nexpected: %016b", v, 0x3A)
 	}
 
@@ -148,18 +196,19 @@ func TestSeverityMask(t *testing.T) {
 	logger.Write(Alert, "4 should be hidden")
 	logger.Write(Critical, "4 should be hidden")
 	//logger.Write(Error,    "4 should be visible")
-	logger.Write(Warning,  "4 should be hidden")
+	logger.Write(Warning, "4 should be hidden")
 	//logger.Write(Notice,   "4 should be visible")
 	//logger.Write(Info,     "4 should be visible")
 	//logger.Write(Debug,   "4 should be visible")
 
 	// > exclude
-	if err := logger.SetSeverityMask("direct", SeverityAll &^ Critical &^ Error); err != nil {
-		t.Errorf("%s", err.Error()); return
+	if err := logger.SetSeverityMask("direct", SeverityAll&^Critical&^Error); err != nil {
+		t.Errorf("%s", err.Error())
+		return
 	} else {
 		t.Logf("sev mask: %016b (%v)",
 			logger.severityMasks["direct"],
-			logger.severityMasks["direct"])	
+			logger.severityMasks["direct"])
 	}
 	if v := logger.severityMasks["direct"]; v != 0x30F3 {
 		t.Errorf("unexpected mask value\ncurrent:  %016b\nexpected: %016b", v, 0xFFC)
@@ -168,7 +217,7 @@ func TestSeverityMask(t *testing.T) {
 	//logger.Write(Emerg, "4 should be visible")
 	//logger.Write(Alert, "4 should be visible")
 	logger.Write(Critical, "4 should be hidden")
-	logger.Write(Error,    "4 should be hidden")
+	logger.Write(Error, "4 should be hidden")
 	//logger.Write(Warning,  "4 should be visible")
 	//logger.Write(Notice,   "4 should be visible")
 	//logger.Write(Info,     "4 should be visible")
@@ -210,14 +259,16 @@ func TestInitialisation(t *testing.T) {
 		msg := "[OK] debug initialisation failed\n"
 		if br, ok := err.(BatchResult); ok {
 			msg += "---successful---\n"
-			for _, r  := range br.ListOfSuccessful() {
+			for _, r := range br.ListOfSuccessful() {
 				msg += fmt.Sprintf("%s\n", r)
 			}
 			msg += "---failed---\n"
 			for r, e := range br.Errors() {
 				msg += fmt.Sprintf("%s: %s\n", r, e)
-			}	
-		} else { t.Errorf("unexpected error type") }
+			}
+		} else {
+			t.Errorf("unexpected error type")
+		}
 		t.Log(msg[:len(msg)-1])
 	}
 	fShowData()
@@ -244,16 +295,21 @@ func TestInitialisation(t *testing.T) {
 }
 
 func TestUnregistering(t *testing.T) {
-	logger := NewLogger()	
-	logFile, err := os.OpenFile("test.log", os.O_APPEND | os.O_CREATE | os.O_WRONLY, 0644)
-	if err != nil { t.Errorf("file open fail: %s", err.Error()); return }
+	logger := NewLogger()
+	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Errorf("file open fail: %s", err.Error())
+		return
+	}
 	logFile.Write([]byte("------------------------------------------\n"))
 	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile).OnClose(
-		func(interface{}){
+		func(interface{}) {
 			logFile.Close()
 			//fmt.Printf("<FCLOSED>\n")
 		},
-	)); err != nil { t.Errorf("recorder register fail: direct") }
+	)); err != nil {
+		t.Errorf("recorder register fail: direct")
+	}
 	if err := logger.RegisterRecorder("syslog", NewSyslogRecorder("xlog-test")); err != nil {
 		t.Errorf("recorder register fail: syslog")
 	}
@@ -271,26 +327,36 @@ func TestUnregistering(t *testing.T) {
 
 func TestStackTrace(t *testing.T) {
 	logger := NewLogger()
-	logFile, err := os.OpenFile("test.log", os.O_APPEND | os.O_WRONLY, 0644)
-	if err != nil { t.Errorf("file open fail: %s", err.Error()); return }
-	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile,).OnClose(
-		func(interface{}){ logFile.Close() },
-	)); err != nil { t.Errorf("recorder register fail: direct"); return }
+	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Errorf("file open fail: %s", err.Error())
+		return
+	}
+	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile).OnClose(
+		func(interface{}) { logFile.Close() },
+	)); err != nil {
+		t.Errorf("recorder register fail: direct")
+		return
+	}
 	if err := logger.Initialise(); err != nil {
-		t.Errorf("%s", err.Error()); return
-	} else { defer logger.Close() }
+		t.Errorf("%s", err.Error())
+		return
+	} else {
+		defer logger.Close()
+	}
 
 	if err := logger.Write(StackTrace, "5 msg with stack trace (full)"); err != nil {
 		t.Errorf("write error: %s", err.Error())
 	}
 
-	if err := logger.Write(StackTraceShort | StackTrace, "5 msg with stack trace (short)"); err != nil {
+	if err := logger.Write(StackTraceShort|StackTrace, "5 msg with stack trace (short)"); err != nil {
 		t.Errorf("write error: %s", err.Error())
 	}
 }
 
 var testValueName string
 var testValueOutpFlag bool
+
 func testValue(t *testing.T, value int, expected int) bool { // utility function
 	if value != expected {
 		t.Errorf("unexpected %s value\ncurrent:  %d\nexpected: %d",
@@ -306,8 +372,11 @@ func testValue(t *testing.T, value int, expected int) bool { // utility function
 func TestRefCounters(t *testing.T) {
 	logger1 := NewLogger()
 	logger2 := NewLogger()
-	logFile, err := os.OpenFile("test.log", os.O_APPEND | os.O_WRONLY, 0644)
-	if err != nil { t.Errorf("file open fail: %s", err.Error()); return }
+	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Errorf("file open fail: %s", err.Error())
+		return
+	}
 	recorder := NewIoDirectRecorder(logFile)
 	logger1.RegisterRecorder("direct", recorder)
 	logger2.RegisterRecorder("direct", recorder)
@@ -315,13 +384,21 @@ func TestRefCounters(t *testing.T) {
 
 	t.Log("--> 1st initialisation of logger1")
 	t.Log("--> 1st initialisation of logger2")
-	if !testValue(t, recorder.refCounter, 0) { return }
+	if !testValue(t, recorder.refCounter, 0) {
+		return
+	}
 	if err := logger1.Initialise(); err != nil {
-		t.Errorf("initialisation error: %s", err.Error()) }
-	if !testValue(t, recorder.refCounter, 1) { return }
+		t.Errorf("initialisation error: %s", err.Error())
+	}
+	if !testValue(t, recorder.refCounter, 1) {
+		return
+	}
 	if err := logger2.Initialise(); err != nil {
-		t.Errorf("initialisation error: %s", err.Error()) }
-	if !testValue(t, recorder.refCounter, 2) { return }
+		t.Errorf("initialisation error: %s", err.Error())
+	}
+	if !testValue(t, recorder.refCounter, 2) {
+		return
+	}
 
 	// trying second initialisation call
 	t.Log("--> 2nd initialisation of logger2")
@@ -329,7 +406,9 @@ func TestRefCounters(t *testing.T) {
 		t.Logf("initialisation error: %s", err.Error())
 		return
 	}
-	if !testValue(t, recorder.refCounter, 2) { return }
+	if !testValue(t, recorder.refCounter, 2) {
+		return
+	}
 
 	// ----------
 
@@ -345,11 +424,13 @@ func TestRefCounters(t *testing.T) {
 
 	t.Log("--> closing logger1")
 	logger1.Close()
-	if !testValue(t, recorder.refCounter, 1) { return }	
+	if !testValue(t, recorder.refCounter, 1) {
+		return
+	}
 
 	// logger.WriteMsg() protection test
 	if err := logger1.Write(Info, "6 this write call should be failed"); err == nil {
-		t.Errorf("FAIL (1), this write call should return error\n"+
+		t.Errorf("FAIL (1), this write call should return error\n" +
 			"we shouldn't be able to write to the closed logger")
 		return
 	}
@@ -357,11 +438,13 @@ func TestRefCounters(t *testing.T) {
 	if err := logger2.Write(Info, "6 should be visible"); err != nil {
 		t.Errorf("write error after 1st close: %s", err.Error())
 		return
-	}	
+	}
 
 	t.Log("--> 1st closing of logger2")
 	logger2.Close()
-	if !testValue(t, recorder.refCounter, 0) { return }
+	if !testValue(t, recorder.refCounter, 0) {
+		return
+	}
 	if err := logger2.Write(Info, "5 this write call should be failed"); err == nil {
 		t.Errorf("FAIL (2), this write call should return error")
 		return
@@ -370,7 +453,9 @@ func TestRefCounters(t *testing.T) {
 	// trying second close call
 	t.Log("--> 2st closing of logger2")
 	logger2.Close()
-	if !testValue(t, recorder.refCounter, 0) { return }
+	if !testValue(t, recorder.refCounter, 0) {
+		return
+	}
 }
 
 // -----------------------------------------------------------------------------
@@ -394,7 +479,9 @@ func t_newDebugRecorder(iid string, outp *string) *debugRecorder {
 }
 
 func (R *debugRecorder) initialise() error {
-	if R.DbgFailInit { return fmt.Errorf("debug error") }
+	if R.DbgFailInit {
+		return fmt.Errorf("debug error")
+	}
 	R.initialised = true
 	R.refCounter++
 	return nil
@@ -402,10 +489,13 @@ func (R *debugRecorder) initialise() error {
 
 func (R *debugRecorder) close() {
 	//if !R.initialised { return }
-	if R.refCounter <= 0 { return }
+	if R.refCounter <= 0 {
+		return
+	}
 	if R.refCounter == 1 {
 		R.initialised = false
-	};R.refCounter--
+	}
+	R.refCounter--
 }
 
 func (R *debugRecorder) isInitialised() bool {
@@ -418,7 +508,11 @@ func (R *debugRecorder) write(msg LogMsg) error {
 			"[%s] initialised=%v  refCounter=%d",
 			R.iid, R.initialised, R.refCounter)
 	}
-	if !R.initialised { return ErrNotInitialised }
-	if R.DbgFailWrite { return fmt.Errorf("debug error") }
+	if !R.initialised {
+		return ErrNotInitialised
+	}
+	if R.DbgFailWrite {
+		return fmt.Errorf("debug error")
+	}
 	return nil
 }

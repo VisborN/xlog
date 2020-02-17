@@ -1,8 +1,8 @@
 package xlog
 
 import (
-	"fmt"
 	"errors"
+	"fmt"
 	"runtime"
 )
 
@@ -11,13 +11,13 @@ var ErrNotInitialised = errors.New("not initialised")
 var ErrWrongFlagValue = errors.New("wrong flag value")
 
 var ErrNoRecorders = errors.New("the logger has no registered recorders")
-var ErrNotWhereToWrite = errors.New("the logger has no default recorders, "+
+var ErrNotWhereToWrite = errors.New("the logger has no default recorders, " +
 	"but custom recorders are not specified")
 
 // -----------------------------------------------------------------------------
 
 type BatchResult struct {
-	errors map[RecorderID]error
+	errors     map[RecorderID]error
 	successful []RecorderID
 	errMessage string
 }
@@ -55,7 +55,7 @@ func (br *BatchResult) Fail(rec RecorderID, err error) *BatchResult {
 	if br.errors == nil {
 		br.errors = make(map[RecorderID]error)
 	}
-	br.errors[rec] = err;
+	br.errors[rec] = err
 	// additional check
 	for i, recID := range br.successful {
 		if recID == rec {
@@ -96,6 +96,7 @@ func (br *BatchResult) SetMsg(msgFmt string, msgArgs ...interface{}) *BatchResul
 // -----------------------------------------------------------------------------
 
 type ieType int
+
 const (
 	ieCritical ieType = 1 << iota
 	ieUnreachable
@@ -103,9 +104,12 @@ const (
 
 func (e ieType) String() string {
 	switch e {
-	case ieCritical: return "critical"
-	case ieUnreachable: return "unreachable"
-	default: return "unknown"
+	case ieCritical:
+		return "critical"
+	case ieUnreachable:
+		return "unreachable"
+	default:
+		return "unknown"
 	}
 }
 
@@ -125,7 +129,7 @@ func (e InternalError) Error() string {
 }
 
 func internalError(t ieType, msgFmt string, msgArgs ...interface{}) error {
-	err := InternalError{ Type: t }
+	err := InternalError{Type: t}
 	pc := make([]uintptr, 20)
 	if n := runtime.Callers(2, pc); n != 0 {
 		frames := runtime.CallersFrames(pc[:n])

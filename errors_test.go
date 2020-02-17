@@ -1,7 +1,9 @@
 package xlog
 
-import "errors"
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestBatchResult(t *testing.T) {
 	r := BatchResult{}
@@ -32,14 +34,14 @@ func TestBatchResult(t *testing.T) {
 
 	const errTail = " (rec1, rec2)"
 	const errNoMsg = "unknown errors"
-	if msg := r.Error(); msg != errNoMsg + errTail {
+	if msg := r.Error(); msg != errNoMsg+errTail {
 		t.Errorf("wrong .Error() return\nreturn: %s\nshould be: %s",
-			msg, errNoMsg + errTail)
+			msg, errNoMsg+errTail)
 	}
 	const errMsg = "an error class"
 	r.SetMsg(errMsg)
-	if msg := r.Error(); msg != errMsg + errTail {
+	if msg := r.Error(); msg != errMsg+errTail {
 		t.Errorf("wrong .Error() return\nreturn: %s\nshould be: %s",
-			msg, errMsg + errTail)
+			msg, errMsg+errTail)
 	}
 }
