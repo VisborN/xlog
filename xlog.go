@@ -80,6 +80,7 @@ const attributeShadowMask MsgFlagT = 0x30FF
 const SeverityAll MsgFlagT = 0x30FF
 const SeverityMajor MsgFlagT = 0x001F
 const SeverityMinor MsgFlagT = 0x00E0
+const SeverityDefault MsgFlagT = 0x00FF
 const SeverityCustom MsgFlagT = 0x3000
 
 // used when severity is 0
