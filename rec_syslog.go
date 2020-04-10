@@ -3,13 +3,11 @@ package xlog
 import (
 	"errors"
 	"log/syslog"
-	"sync"
 )
 
 var errWrongPriority = errors.New("wrong priority value")
 
 type syslogRecorder struct {
-	sync.Mutex
 	refCounter int
 	prefix     string
 	format     FormatFunc
@@ -44,8 +42,6 @@ func NewSyslogRecorder(prefix string) *syslogRecorder {
 
 // BindSeverityFlag rebinds severity flag to the new syslog priority code.
 func (R *syslogRecorder) BindSeverityFlag(severity MsgFlagT, priority syslog.Priority) error {
-	R.Lock()
-	defer R.Unlock()
 	severity = severity &^ SeverityShadowMask
 	if _, exist := R.sevBindings[severity]; !exist {
 		return ErrWrongFlagValue
@@ -68,8 +64,6 @@ func (R *syslogRecorder) BindSeverityFlag(severity MsgFlagT, priority syslog.Pri
 }
 
 func (R *syslogRecorder) initialise() error {
-	R.Lock()
-	defer R.Unlock()
 	//if R.refCounter < 0 { R.refCounter = 0 }
 	if R.refCounter == 0 {
 		var err error
@@ -83,8 +77,6 @@ func (R *syslogRecorder) initialise() error {
 }
 
 func (R *syslogRecorder) close() {
-	R.Lock()
-	defer R.Unlock()
 	if R.refCounter == 0 {
 		return
 	}
@@ -96,15 +88,11 @@ func (R *syslogRecorder) close() {
 
 // FormatFunc sets custom formatter function for this recorder.
 func (R *syslogRecorder) FormatFunc(f FormatFunc) *syslogRecorder {
-	R.Lock()
-	defer R.Unlock()
 	R.format = f
 	return R
 }
 
 func (R *syslogRecorder) write(msg LogMsg) error {
-	R.Lock()
-	defer R.Unlock()
 	if R.refCounter == 0 {
 		return ErrNotInitialised
 	}

@@ -81,7 +81,7 @@ func TestLogMsg(t *testing.T) {
 	if err := logger.WriteMsg(nil, msg); err != nil {
 		t.Errorf("%s", err.Error())
 	}
-	if (msg.GetFlags()&^severityShadowMask) != Critical || msg.GetContent() !=
+	if (msg.GetFlags()&^SeverityShadowMask) != Critical || msg.GetContent() !=
 		"2 the message header\nnew line (manual)\nnew line (auto)" {
 		t.Errorf("error, unexpected message data\n%v", msg)
 	}
@@ -93,7 +93,7 @@ func TestLogMsg(t *testing.T) {
 	if err := logger.WriteMsg(nil, msg); err != nil {
 		t.Errorf("%s", err.Error())
 	}
-	if (msg.GetFlags() &^ severityShadowMask) != Info {
+	if (msg.GetFlags() &^ SeverityShadowMask) != Info {
 		t.Errorf("error, unexpected message severity")
 	}
 	if msg.GetTime() == originalTime {

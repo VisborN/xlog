@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -179,8 +178,6 @@ type logRecorder interface {
 type RecorderID string
 
 type Logger struct {
-	sync.Mutex
-
 	initialised bool // init falg
 	// We must sure that functions init/close doesn't call successively.
 	// In any other case, we can have problems with reference counters calculations.
@@ -211,8 +208,6 @@ func NewLogger() *Logger {
 }
 
 func (L *Logger) NumberOfRecorders() int {
-	L.Lock()
-	defer L.Unlock()
 	return len(L.recorders)
 }
 
@@ -226,9 +221,6 @@ func (L *Logger) RegisterRecorder(id RecorderID, recorder logRecorder) error {
 func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logRecorder) error {
 	// This function should configure all related fields. Other functions
 	// will return critical error if they meet a wrong logger data.
-
-	L.Lock()
-	defer L.Unlock()
 
 	if L.recorders == nil {
 		L.recorders = make(map[RecorderID]logRecorder)
@@ -281,8 +273,6 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, asDefault bool, recorder logR
 }
 
 func (L *Logger) UnregisterRecorder(id RecorderID) error {
-	L.Lock()
-	defer L.Unlock()
 	if len(L.recorders) == 0 {
 		return ErrNoRecorders
 	}
@@ -321,8 +311,6 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 
 // Initialise calls initialisation functions of each registered recorder.
 func (L *Logger) Initialise() error {
-	L.Lock()
-	defer L.Unlock()
 	if L.initialised {
 		return nil
 	} // already initialised
@@ -360,8 +348,6 @@ func (L *Logger) Initialise() error {
 
 // Close calls closing functions of each registered recorder.
 func (L *Logger) Close() {
-	L.Lock()
-	defer L.Unlock()
 	if !L.initialised {
 		return
 	} // not initialised currently
@@ -379,8 +365,6 @@ func (L *Logger) Close() {
 // (The default recorders list determinate which recorders will use for
 // writing if custom recorders are not specified in the log message.)
 func (L *Logger) AddToDefaults(recorders []RecorderID) error {
-	L.Lock()
-	defer L.Unlock()
 	if len(L.recorders) == 0 {
 		return ErrNoRecorders
 	}
@@ -422,8 +406,6 @@ main_iter:
 // (The default recorders list determinate which recorders will use for
 // writing if custom recorders are not specified in the log message.)
 func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
-	L.Lock()
-	defer L.Unlock()
 	if len(L.recorders) == 0 {
 		return ErrNoRecorders
 	}
@@ -468,8 +450,6 @@ func (L *Logger) ChangeSeverityOrder(
 	recorder RecorderID, srcFlag MsgFlagT, dir ssDirection, trgFlag MsgFlagT,
 ) error {
 
-	L.Lock()
-	defer L.Unlock()
 	if len(L.recorders) == 0 {
 		return ErrNoRecorders
 	}
@@ -540,8 +520,6 @@ func (L *Logger) ChangeSeverityOrder(
 
 // SetSeverityMask sets which severities allowed for the given recorder in this logger.
 func (L *Logger) SetSeverityMask(recorder RecorderID, flags MsgFlagT) error {
-	L.Lock()
-	defer L.Unlock()
 	if L.severityMasks == nil {
 		return internalError(ieCritical, "bumped to nil")
 	}
@@ -578,8 +556,6 @@ func (L *Logger) Write(flags MsgFlagT, msgFmt string, msgArgs ...interface{}) er
 // If custom recorders are not specified, uses default recorders. Returns nil
 // on success and error on fail.
 func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
-	L.Lock()
-	defer L.Unlock()
 	if !L.initialised {
 		return ErrNotInitialised
 	}
