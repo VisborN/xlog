@@ -8,6 +8,10 @@ import (
 type recorderSignal string
 
 type ioDirectRecorder struct {
+	chCtl chan ControlSignal
+	chMsg chan *LogMsg // TODO
+	chErr chan error
+
 	refCounter int
 	prefix     string
 	format     FormatFunc
@@ -27,10 +31,48 @@ func NewIoDirectRecorder(writer io.Writer, prefix ...string) *ioDirectRecorder {
 	return r
 }
 
-func (R *ioDirectRecorder) initialise() error {
-	//if R.refCounter < 0 { R.refCounter = 0 }
-	R.refCounter++
+func (R *ioDirectRecorder) SetChannels(
+	chCtl chan ControlSignal, chMsg chan *LogMsg, chErr chan error,
+) error {
+	if chCtl == nil || chMsg == nil || chErr == nil {
+		return fmt.Errorf("") // TODO
+	}
+	R.chCtl = chCtl
+	R.chMsg = chMsg
+	R.chErr = chErr
 	return nil
+}
+
+func (R *ioDirectRecorder) Listen() {
+	for {
+		select {
+		case msg := <-R.chCtl:
+			switch msg {
+			case SignalInit:
+				R.initialise()
+				R.chErr <- nil // error ain't possible
+			case SignalClose:
+				R.close()
+			default:
+				R.chErr <- ErrUnknownSignal
+				// unknown signal, skip
+			}
+		case msg := <-R.chMsg:
+			err := R.write(*msg)
+			if err != nil {
+				R.chErr <- err
+			}
+		}
+	}
+}
+
+func (R *ioDirectRecorder) GetChannels() ChanBundle {
+	return ChanBundle{R.chCtl, R.chMsg, R.chErr}
+}
+
+func (R *ioDirectRecorder) initialise() {
+	R.refCounter++
+	return
 }
 
 func (R *ioDirectRecorder) close() {
