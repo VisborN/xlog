@@ -9,7 +9,7 @@ type recorderSignal string
 
 type ioDirectRecorder struct {
 	chCtl chan ControlSignal
-	chMsg chan *LogMsg // TODO
+	chMsg chan *LogMsg
 	chErr chan error
 
 	refCounter int
@@ -19,9 +19,24 @@ type ioDirectRecorder struct {
 	closer     func(interface{})
 }
 
+func (R *ioDirectRecorder) initChannels() {
+	R.chCtl = make(chan ControlSignal, 256)
+	R.chMsg = make(chan *LogMsg, 256)
+	R.chErr = make(chan error, 256)
+}
+
 // NewIoDirectRecorder allocates and returns a new io direct recorder.
-func NewIoDirectRecorder(writer io.Writer, prefix ...string) *ioDirectRecorder {
+func NewIoDirectRecorder(
+	writer io.Writer, errChannel chan error, prefix ...string,
+) *ioDirectRecorder {
 	r := new(ioDirectRecorder)
+	r.chCtl = make(chan ControlSignal, 256)
+	r.chMsg = make(chan *LogMsg, 256)
+	if errChannel != nil {
+		r.chErr = errChannel
+	} else {
+		r.chErr = DefErrChan
+	}
 	r.format = IoDirectDefaultFormatter
 	r.writer = writer
 	r.refCounter = 0
@@ -31,16 +46,8 @@ func NewIoDirectRecorder(writer io.Writer, prefix ...string) *ioDirectRecorder {
 	return r
 }
 
-func (R *ioDirectRecorder) SetChannels(
-	chCtl chan ControlSignal, chMsg chan *LogMsg, chErr chan error,
-) error {
-	if chCtl == nil || chMsg == nil || chErr == nil {
-		return fmt.Errorf("") // TODO
-	}
-	R.chCtl = chCtl
-	R.chMsg = chMsg
-	R.chErr = chErr
-	return nil
+func (R *ioDirectRecorder) GetChannels() ChanBundle {
+	return ChanBundle{R.chCtl, R.chMsg, R.chErr}
 }
 
 func (R *ioDirectRecorder) Listen() {
@@ -64,10 +71,6 @@ func (R *ioDirectRecorder) Listen() {
 			}
 		}
 	}
-}
-
-func (R *ioDirectRecorder) GetChannels() ChanBundle {
-	return ChanBundle{R.chCtl, R.chMsg, R.chErr}
 }
 
 func (R *ioDirectRecorder) initialise() {

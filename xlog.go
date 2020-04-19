@@ -172,26 +172,24 @@ type ControlSignal string
 const (
 	SignalInit  ControlSignal = "SIG_INIT"
 	SignalClose ControlSignal = "SIG_STOP"
-	//signalDone  ControlSignal = "SIG_DONE"
-	//signalErr   ControlSignal = "SIG_ERR"
 )
 
 type FormatFunc func(*LogMsg) string
 
-type logRecorder interface {
-	//initialise() error
-	//close()
-	//write(LogMsg) error
+// Default error channel for recorder's output.
+// Used if custom error channel isn't specified for the recorder.
+var DefErrChan chan error = make(chan error, 256)
 
-	SetChannels(chan ControlSignal, chan *LogMsg, chan error)
+type logRecorder interface {
 	Listen()
+	GetChannels() ChanBundle
 }
 
 type RecorderID string
 
-// ChanBundle structure represents channels as a recorder's interface.
+// CHanBundle structure represents recorder interface channels.
 type ChanBundle struct {
-	chCtl chan ControlSignal
+	chCtl chan<- ControlSignal
 	chMsg chan<- *LogMsg
 	chErr <-chan error
 }
