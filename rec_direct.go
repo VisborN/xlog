@@ -12,6 +12,7 @@ type ioDirectRecorder struct {
 	chMsg chan *LogMsg
 	chErr chan error
 
+	listening  bool
 	refCounter int
 	prefix     string
 	format     FormatFunc
@@ -51,6 +52,7 @@ func (R *ioDirectRecorder) GetChannels() ChanBundle {
 }
 
 func (R *ioDirectRecorder) Listen() {
+	R.listening = true
 	for {
 		select {
 		case msg := <-R.chCtl:
@@ -61,6 +63,7 @@ func (R *ioDirectRecorder) Listen() {
 			case SignalClose:
 				R.close()
 			case SignalStop: // TODO
+				R.listening = false
 				return
 			default:
 				R.chErr <- ErrUnknownSignal
@@ -73,6 +76,10 @@ func (R *ioDirectRecorder) Listen() {
 			}
 		}
 	}
+}
+
+func (R *ioDirectRecorder) IsListening() bool {
+	return R.listening
 }
 
 func (R *ioDirectRecorder) initialise() {
