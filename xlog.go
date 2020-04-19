@@ -171,7 +171,8 @@ type ControlSignal string
 
 const (
 	SignalInit  ControlSignal = "SIG_INIT"
-	SignalClose ControlSignal = "SIG_STOP"
+	SignalClose ControlSignal = "SIG_CLOSE"
+	SignalStop  ControlSignal = "SIG_STOP"
 )
 
 type FormatFunc func(*LogMsg) string

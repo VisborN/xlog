@@ -60,6 +60,8 @@ func (R *ioDirectRecorder) Listen() {
 				R.chErr <- nil // error ain't possible
 			case SignalClose:
 				R.close()
+			case SignalStop: // TODO
+				return
 			default:
 				R.chErr <- ErrUnknownSignal
 				// unknown signal, skip
