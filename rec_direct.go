@@ -52,6 +52,9 @@ func (R *ioDirectRecorder) GetChannels() ChanBundle {
 }
 
 func (R *ioDirectRecorder) Listen() {
+	if R.listening {
+		return
+	}
 	R.listening = true
 	for {
 		select {
