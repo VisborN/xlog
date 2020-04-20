@@ -9,101 +9,161 @@ import (
 
 func TestGeneral(t *testing.T) {
 	logger := NewLogger()
-	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		t.Errorf("file open fail: %s", err.Error())
-		return
-	}
-	logFile.Write([]byte("------------------------------------------\n"))
-	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile).OnClose(
-		func(interface{}) { logFile.Close() },
-	)); err != nil {
+	rec := NewIoDirectRecorder(os.Stdout, nil)
+	bundle := rec.GetChannels()
+	t.Log("register recorder...")
+	if err := logger.RegisterRecorder("direct", bundle); err != nil {
 		t.Errorf("recorder register fail: direct")
 	}
-	if err := logger.RegisterRecorder("syslog", NewSyslogRecorder("xlog-test")); err != nil {
-		t.Errorf("recorder register fail: syslog")
-	}
-
+	t.Log("(num of rec check)")
 	if logger.NumberOfRecorders() == 0 {
+		t.Errorf("no recorders error")
 		return
 	}
+
+	t.Log("listen <-")
+	go rec.Listen() // <----
+	//defer func() { rec.GetChannels().chCtl <- SignalStop }()
+	time.Sleep(time.Second) // to allow VM start goroutine
+	if !rec.IsListening() {
+		t.Errorf("CRITICAL: recorder isn't listening")
+		return
+	}
+	t.Log("initialising logger...")
 	if err := logger.Initialise(); err != nil {
 		t.Errorf("%s", err.Error())
 		return
 	} else {
+		t.Log("OK")
 		defer logger.Close()
 	}
 
-	if err := logger.Write(Error, "1 error message"); err != nil {
+	if err := logger.Write(Error, "error message"); err != nil {
 		t.Errorf("%s", err.Error())
 	}
-	time.Sleep(2 * time.Second)
-	if err := logger.Write(Info, "1 info message"); err != nil {
+	time.Sleep(2 * time.Second) // to check timestamp
+	if err := logger.Write(Info, "info message"); err != nil {
 		t.Errorf("%s", err.Error())
 	}
-	if err := logger.WriteMsg([]RecorderID{"direct"},
-		Message("1 only for direct recorder")); err != nil {
-		t.Errorf("%s", err.Error())
-		if br, ok := err.(BatchResult); ok {
-			msg := fmt.Sprintf("error msg: %s\n", br.Error())
-			for recID, e := range br.Errors() {
-				msg += fmt.Sprintf("%s: %s\n", recID, e.Error())
-			}
-			t.Log(msg[:len(msg)-1])
+	time.Sleep(10 * time.Microsecond) // to correct console output
+
+	// listening stop signal check //
+	func() { rec.GetChannels().chCtl <- SignalStop }()
+	time.Sleep(time.Second) // to allow VM switch stream
+	t.Log("stop signal check...")
+	if rec.IsListening() {
+		t.Errorf("recorder listener still alive")
+	} else {
+		t.Log("OK")
+	}
+}
+
+func TestInitialisation(t *testing.T) {
+	logger := NewLogger()
+	rec1 := t_newDebugRecorder("DR1", nil)
+	rec2 := t_newDebugRecorder("DR2", nil)
+	go rec1.Listen()
+	go rec2.Listen()
+	logger.RegisterRecorder("rec-1", rec1.GetChannels())
+	logger.RegisterRecorder("rec-2", rec2.GetChannels())
+
+	displayStates := func() {
+		msg := "[info] states: "
+		msg += fmt.Sprintf("{ logger=%v, ", logger.initialised)
+		msg += fmt.Sprintf("rec1=%v, ", rec1.initialised)
+		msg += fmt.Sprintf("rec2=%v }", rec2.initialised)
+		t.Log(msg)
+	}
+
+	displayErrors := func(msg *string, br BatchResult) {
+		*msg += "successfull recorders:\n"
+		for _, r := range br.ListOfSuccessful() {
+			*msg += fmt.Sprintf("  * %s\n", r)
+		}
+		*msg += "failed recorders:\n"
+		for r, e := range br.Errors() {
+			*msg += fmt.Sprintf("  * %s: %s\n", r, e)
 		}
 	}
-}
 
-func TestLogMsg(t *testing.T) {
-	logger := NewLogger()
-	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		t.Errorf("file open fail: %s", err.Error())
-		return
-	}
-	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile).OnClose(
-		func(interface{}) { logFile.Close() },
-	)); err != nil {
-		t.Errorf("recorder register fail: direct")
-		return
-	}
-	if err := logger.Initialise(); err != nil {
-		t.Errorf("%s", err.Error())
+	// fail on init check //
+	t.Log("--> 1st init call (-)")
+	rec2.DbgFailInit = true
+	if err := logger.Initialise(); err == nil {
+		t.Errorf("[unexpected] debug init successful")
 		return
 	} else {
-		defer logger.Close()
+		displayStates()
+		msg := "debug init failed (OK)\n"
+		if br, ok := err.(BatchResult); ok {
+			displayErrors(&msg, br)
+			if err, exists := br.Errors()["rec-2"]; !exists ||
+				len(br.Errors()) != 1 || err != t_errManualInvoked {
+				t.Errorf("BatchResult.Errors() wrong value\n%s", err.Error())
+				return
+			}
+			if len(br.ListOfSuccessful()) != 1 || br.ListOfSuccessful()[0] != "rec-1" {
+				t.Errorf("BatchResult.ListOfSuccessful: wrong value")
+				return
+			}
+			if logger.initialised == true ||
+				rec1.initialised != true || rec2.initialised == true {
+				t.Errorf(".initialised: wrong value")
+				return
+			}
+			t.Log(msg[:len(msg)-1])
+		} else {
+			t.Errorf("unexpected error type")
+			return
+		}
+		t.Logf("OK")
 	}
 
-	msg := NewLogMsg().SetFlags(Critical)
-	msg.Setf("2 the message header")
-	msg.Addf("\nnew line (manual)")
-	msg.Addf_ln("new line (auto)")
-	if err := logger.WriteMsg(nil, msg); err != nil {
-		t.Errorf("%s", err.Error())
-	}
-	if (msg.GetFlags()&^SeverityShadowMask) != Critical || msg.GetContent() !=
-		"2 the message header\nnew line (manual)\nnew line (auto)" {
-		t.Errorf("error, unexpected message data\n%v", msg)
+	// successful init //
+	t.Log("--> 2nd init call (+)")
+	rec2.DbgFailInit = false
+	err := logger.Initialise()
+	displayStates()
+	if err != nil {
+		t.Errorf("FAIL: logger should be fully initialised\n%s", err.Error())
+		return
+	} else {
+		t.Log("OK")
 	}
 
-	msg = NewLogMsg().SetFlags(Debug)
-	msg.Addf("2 original message\nsecond line")
-	originalTime := msg.GetTime()
-	msg.Setf("2 overwritten message").SetFlags(Info).UpdateTime()
-	if err := logger.WriteMsg(nil, msg); err != nil {
-		t.Errorf("%s", err.Error())
+	// empty init call check //
+	t.Log("-> 3rd init call (0)")
+	err = logger.Initialise()
+	displayStates()
+	if err != nil {
+		t.Errorf("FAIL: logger should be fully initialised\n%s", err.Error())
+		return
+	} else {
+		t.Log("OK")
 	}
-	if (msg.GetFlags() &^ SeverityShadowMask) != Info {
-		t.Errorf("error, unexpected message severity")
+
+	// check flag reset at new recorder //
+	t.Log("check init flag resetting...")
+	rec3 := t_newDebugRecorder("DR3", nil)
+	logger.RegisterRecorder("rec-3", rec3.GetChannels())
+	if logger.initialised == true {
+		t.Errorf("FAIL: new recorder has been added but logger still initialised")
+	} else {
+		t.Log("OK")
 	}
-	if msg.GetTime() == originalTime {
-		t.Errorf("error, unexpected message time value")
-	}
-	if msg.GetContent() != "2 overwritten message" {
-		t.Errorf("error, unexpected message data")
-	}
+
+	// writing to uninitialised logger //
+	t.Log("writing to uninitialised logger...")
+	err = logger.Write(Info, "")
+	t.Logf("retult: err %v", err)
+	// TODO: behaviour
 }
 
+// =======================================================================
+//
+// =======================================================================
+
+/*
 func TestSeverityOrder(t *testing.T) {
 	logger := NewLogger()
 	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
@@ -224,74 +284,6 @@ func TestSeverityMask(t *testing.T) {
 	//logger.Write(Debug1,   "4 should be visible")
 	//logger.Write(Debug2,   "4 should be visible")
 	//logger.Write(Debug3,   "4 should be visible")
-}
-
-func TestInitialisation(t *testing.T) {
-	var dbgOutp string
-	logger := NewLogger()
-	dbgRecorder1 := t_newDebugRecorder("DR1", &dbgOutp)
-	dbgRecorder2 := t_newDebugRecorder("DR2", &dbgOutp)
-	dbgRecorder3 := t_newDebugRecorder("DR3", &dbgOutp)
-	logger.RegisterRecorder("debug-1", dbgRecorder1)
-	logger.RegisterRecorder("debug-2", dbgRecorder2)
-
-	fShowData := func() {
-		msg := "<show info>\n"
-		msg += fmt.Sprintf("logger: initialised=%v\n", logger.initialised)
-		for recID, state := range logger.recordersState {
-			msg += fmt.Sprintf("  %-10s : %v\n", recID, state)
-		}
-		msg += "recorders data:\n"
-		for _, rec := range logger.recorders {
-			rec.write(*NewLogMsg())
-			msg += fmt.Sprintf("  %s\n", dbgOutp)
-			dbgOutp = ""
-		}
-		t.Log(msg[:len(msg)-1])
-	}
-
-	t.Log("--> 1st initialisation call")
-	dbgRecorder2.DbgFailInit = true
-	err := logger.Initialise()
-	if err == nil {
-		t.Errorf("[unexpected behaviour] initialisation success")
-	} else {
-		msg := "[OK] debug initialisation failed\n"
-		if br, ok := err.(BatchResult); ok {
-			msg += "---successful---\n"
-			for _, r := range br.ListOfSuccessful() {
-				msg += fmt.Sprintf("%s\n", r)
-			}
-			msg += "---failed---\n"
-			for r, e := range br.Errors() {
-				msg += fmt.Sprintf("%s: %s\n", r, e)
-			}
-		} else {
-			t.Errorf("unexpected error type")
-		}
-		t.Log(msg[:len(msg)-1])
-	}
-	fShowData()
-
-	t.Log("--> 2nd initialisation call")
-	//dbgRecorder1.DbgFailInit = true
-	dbgRecorder2.DbgFailInit = false
-	err = logger.Initialise()
-	t.Logf("result: %v", err)
-	fShowData()
-
-	t.Log("--> 3rd initialisation call")
-	err = logger.Initialise()
-	t.Logf("result: %v", err)
-	fShowData()
-
-	// reset flag at new recorder
-	if err := logger.RegisterRecorder("debug-3", dbgRecorder3); err != nil {
-		t.Errorf("rr initialisation error: %s", err.Error())
-	}
-	if logger.initialised == true {
-		t.Errorf("FAIL: logger still initialised after adding new recorder")
-	}
 }
 
 func TestUnregistering(t *testing.T) {
@@ -457,12 +449,19 @@ func TestRefCounters(t *testing.T) {
 		return
 	}
 }
+*/
 
 // -----------------------------------------------------------------------------
 //                        ***** DEBUG RECORDER *****
 // -----------------------------------------------------------------------------
 
-type debugRecorder struct { // ioDirectRecorder behaviour
+var t_errManualInvoked = fmt.Errorf("manual invoked error")
+
+type t_debugRecorder struct {
+	chCtl chan ControlSignal
+	chMsg chan *LogMsg
+	chErr chan error
+
 	initialised  bool
 	refCounter   int
 	DbgFailInit  bool
@@ -471,48 +470,58 @@ type debugRecorder struct { // ioDirectRecorder behaviour
 	iid          string
 }
 
-func t_newDebugRecorder(iid string, outp *string) *debugRecorder {
-	r := new(debugRecorder)
+func t_newDebugRecorder(iid string, outp *string) *t_debugRecorder {
+	r := new(t_debugRecorder)
+	r.chCtl = make(chan ControlSignal, 5)
+	r.chMsg = make(chan *LogMsg, 5)
+	r.chErr = make(chan error)
 	r.DbgOutput = outp
 	r.iid = iid
 	return r
 }
 
-func (R *debugRecorder) initialise() error {
-	if R.DbgFailInit {
-		return fmt.Errorf("debug error")
-	}
-	R.initialised = true
-	R.refCounter++
-	return nil
+func (R *t_debugRecorder) GetChannels() ChanBundle {
+	return ChanBundle{R.chCtl, R.chMsg, R.chErr}
 }
 
-func (R *debugRecorder) close() {
-	//if !R.initialised { return }
-	if R.refCounter <= 0 {
-		return
+func (R *t_debugRecorder) Listen() {
+	for {
+		select {
+		case msg := <-R.chCtl:
+			switch msg {
+			case SignalInit:
+				if R.DbgFailInit {
+					R.chErr <- t_errManualInvoked
+					continue
+				}
+				R.initialised = true
+				R.refCounter++
+				R.chErr <- nil
+			case SignalClose:
+				if R.refCounter > 0 {
+					R.refCounter--
+					if R.refCounter == 0 {
+						R.initialised = false
+					}
+				}
+			}
+		case msg := <-R.chMsg:
+			err := R.write(*msg)
+			R.chErr <- err
+		}
 	}
-	if R.refCounter == 1 {
-		R.initialised = false
-	}
-	R.refCounter--
 }
 
-func (R *debugRecorder) isInitialised() bool {
-	return R.initialised
-}
-
-func (R *debugRecorder) write(msg LogMsg) error {
+func (R *t_debugRecorder) write(msg LogMsg) error {
 	if R.DbgOutput != nil {
-		*R.DbgOutput = fmt.Sprintf(
-			"[%s] initialised=%v  refCounter=%d",
+		*R.DbgOutput = fmt.Sprintf("[%s] initialised=%v  refCounter=%d",
 			R.iid, R.initialised, R.refCounter)
 	}
 	if !R.initialised {
 		return ErrNotInitialised
 	}
 	if R.DbgFailWrite {
-		return fmt.Errorf("debug error")
+		return t_errManualInvoked
 	}
 	return nil
 }
