@@ -190,7 +190,6 @@ func TestRefCounter(t *testing.T) {
 		return
 	}
 	if !testFunc(rec.refCounter, 1) {
-		return
 	} else {
 		t.Log("OK")
 	}
@@ -201,7 +200,6 @@ func TestRefCounter(t *testing.T) {
 		return
 	}
 	if !testFunc(rec.refCounter, 2) {
-		return
 	} else {
 		t.Log("OK")
 	}
@@ -212,13 +210,74 @@ func TestRefCounter(t *testing.T) {
 		return
 	}
 	if !testFunc(rec.refCounter, 2) {
-		return
 	} else {
 		t.Log("OK")
 	}
 
-	// TODO
-	// ...
+	// ----------------------------------------
+
+	{ // for additional checks
+		rec2 := NewIoDirectRecorder(os.Stdout, nil)
+		go rec2.Listen()
+		defer func() { rec2.GetChannels().chCtl <- SignalStop }()
+		logger2.RegisterRecorder("direct-2", rec2.GetChannels())
+	}
+
+	t.Log("-> logger1: unregister recorder (+0INIT)")
+	if err := logger1.UnregisterRecorder("direct"); err != nil {
+		t.Errorf("unregistering error: %s", err.Error())
+		return
+	}
+	if !testFunc(rec.refCounter, 1) {
+	} else {
+		// fully uninitialised check
+		if logger1.initialised != false {
+			t.Log("ref. counter is ok")
+			t.Errorf("logger1 is still initialised (was only one rec.)")
+		} else {
+			if err := logger1.Write(Info, "shouldn't be visible"); err == nil {
+				t.Log("ref. counter is ok")
+				t.Log("init check passed")
+				t.Errorf("logger1.Write() should return an error\n%v", logger1)
+			} else {
+				t.Log("OK")
+			}
+		}
+	}
+
+	t.Log("-> logger2: unregister recorder (+1INIT)")
+	if err := logger2.UnregisterRecorder(("direct")); err != nil {
+		t.Errorf("unregistering error: %s", err.Error())
+		return
+	}
+	if !testFunc(rec.refCounter, 0) {
+	} else {
+		// partial unregister init check
+		if logger2.initialised != true {
+			t.Log("ref. counter is ok")
+			t.Errorf("wrong logger initialised state after unregistering")
+		} else {
+			if err := logger2.Write(Info, "should be visible"); err != nil {
+				t.Log("ref. counter is ok")
+				t.Log("init check passed")
+				t.Errorf("logger2.Write() return an error: %s\n%v", err.Error(), logger2)
+			}
+			t.Log("OK")
+		}
+	}
+
+	// check writing with no refs on recorder //
+	rec.GetChannels().chMsg <- NewLogMsg().Setf("shouldn't be displayed") // TODO
+	select {
+	case err, ok := <-rec.GetChannels().chErr:
+		if !ok {
+			t.Errorf("CAUTION: error-channel has been closed")
+			return
+		}
+		t.Logf("OK\nerr: %s", err.Error())
+	default:
+		t.Errorf("FAIL: no messages in error-channel")
+	}
 }
 
 // =======================================================================
@@ -337,37 +396,6 @@ func TestSeverityMask(t *testing.T) {
 }
 
 /*
-func TestUnregistering(t *testing.T) {
-	logger := NewLogger()
-	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		t.Errorf("file open fail: %s", err.Error())
-		return
-	}
-	logFile.Write([]byte("------------------------------------------\n"))
-	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile).OnClose(
-		func(interface{}) {
-			logFile.Close()
-			//fmt.Printf("<FCLOSED>\n")
-		},
-	)); err != nil {
-		t.Errorf("recorder register fail: direct")
-	}
-	if err := logger.RegisterRecorder("syslog", NewSyslogRecorder("xlog-test")); err != nil {
-		t.Errorf("recorder register fail: syslog")
-	}
-	if err := logger.Initialise(); err != nil {
-		t.Errorf("initialisation fail: %s", err.Error())
-		return
-	}
-
-	t.Logf("%v", logger)
-	if err := logger.UnregisterRecorder("direct"); err != nil {
-		t.Errorf("unregister fail: %s", err.Error())
-	}
-	t.Logf("%v", logger)
-}
-
 func TestStackTrace(t *testing.T) {
 	logger := NewLogger()
 	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
@@ -396,7 +424,6 @@ func TestStackTrace(t *testing.T) {
 		t.Errorf("write error: %s", err.Error())
 	}
 }
-
 */
 
 // -----------------------------------------------------------------------------
