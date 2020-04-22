@@ -159,11 +159,70 @@ func TestInitialisation(t *testing.T) {
 	// TODO: behaviour
 }
 
-// =======================================================================
-//
+func TestRefCounter(t *testing.T) {
+	var testValOutputFlag bool = true
+	var testValName string = "reference counter"
+	testFunc := func(value, expected int) bool {
+		if value != expected {
+			t.Errorf("unexpected %s value\ncurrent: %d\nexpected: %d",
+				testValName, value, expected)
+			return false
+		}
+		if testValOutputFlag {
+			t.Logf("%s value: %d", testValName, value)
+		}
+		return true
+	}
+
+	logger1 := NewLogger()
+	logger2 := NewLogger()
+	rec := NewIoDirectRecorder(os.Stdout, nil)
+	go rec.Listen()
+	defer func() { rec.GetChannels().chCtl <- SignalStop }()
+	logger1.RegisterRecorder("direct", rec.GetChannels())
+	logger2.RegisterRecorder("direct", rec.GetChannels())
+
+	testFunc(rec.refCounter, 0) // test startup counter value
+
+	t.Log("-> 1st initialisation of logger1")
+	if err := logger1.Initialise(); err != nil {
+		t.Errorf("initialisation error: %s", err.Error())
+		return
+	}
+	if !testFunc(rec.refCounter, 1) {
+		return
+	} else {
+		t.Log("OK")
+	}
+
+	t.Log("-> initialisation of logger2")
+	if err := logger2.Initialise(); err != nil {
+		t.Errorf("initialisation error: %s", err.Error())
+		return
+	}
+	if !testFunc(rec.refCounter, 2) {
+		return
+	} else {
+		t.Log("OK")
+	}
+
+	t.Log("-> 2nd initialisation of logger1")
+	if err := logger1.Initialise(); err != nil {
+		t.Errorf("initialisation error: %s", err.Error())
+		return
+	}
+	if !testFunc(rec.refCounter, 2) {
+		return
+	} else {
+		t.Log("OK")
+	}
+
+	// TODO
+	// ...
+}
+
 // =======================================================================
 
-/*
 func TestSeverityOrder(t *testing.T) {
 	logger := NewLogger()
 	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
@@ -171,10 +230,11 @@ func TestSeverityOrder(t *testing.T) {
 		t.Errorf("file open fail: %s", err.Error())
 		return
 	}
-	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile).OnClose(
-		func(interface{}) { logFile.Close() },
-	)); err != nil {
-		t.Errorf("recorder register fail: direct")
+	rec := NewIoDirectRecorder(logFile, nil).OnClose(func(interface{}) { logFile.Close() })
+	go rec.Listen()
+	defer func() { rec.GetChannels().chCtl <- SignalStop }()
+	if err := logger.RegisterRecorder("direct", rec.GetChannels()); err != nil {
+		t.Errorf("recorder register fail: %s", err.Error())
 		return
 	}
 	if err := logger.Initialise(); err != nil {
@@ -184,6 +244,7 @@ func TestSeverityOrder(t *testing.T) {
 		defer logger.Close()
 	}
 
+	// test default order //
 	var testFlags MsgFlagT = Error | Info
 	if err := logger.severityProtector(
 		logger.severityOrder[RecorderID("direct")], &testFlags); err != nil {
@@ -193,12 +254,12 @@ func TestSeverityOrder(t *testing.T) {
 	if testFlags != Error {
 		t.Errorf("severityProtector() fail\nresult:   %012b\nexpected: %012b", testFlags, Error)
 	}
-	msg := NewLogMsg().SetFlags(Error | Info).Setf("3 should be error")
+	msg := NewLogMsg().SetFlags(Error | Info).Setf("should be an error")
 	if err := logger.WriteMsg(nil, msg); err != nil {
 		t.Logf("write error: %s", err.Error())
 	}
 
-	// change it
+	// change the order //
 	if err := logger.ChangeSeverityOrder("direct", Info, Before, Error); err != nil {
 		t.Errorf("%s", err.Error())
 		return
@@ -213,7 +274,7 @@ func TestSeverityOrder(t *testing.T) {
 	if testFlags != Info {
 		t.Errorf("severityProtector() fail\nresult:   %012b\nexpected: %012b", testFlags, Info)
 	}
-	msg.UpdateTime().SetFlags(Error | Info).Setf("3 should be info")
+	msg.UpdateTime().SetFlags(Error | Info).Setf("should be an info")
 	if err := logger.WriteMsg(nil, msg); err != nil {
 		t.Logf("write error: %s", err.Error())
 	}
@@ -226,10 +287,11 @@ func TestSeverityMask(t *testing.T) {
 		t.Errorf("file open fail: %s", err.Error())
 		return
 	}
-	if err := logger.RegisterRecorder("direct", NewIoDirectRecorder(logFile).OnClose(
-		func(interface{}) { logFile.Close() },
-	)); err != nil {
-		t.Errorf("recorder register fail: direct")
+	rec := NewIoDirectRecorder(logFile, nil).OnClose(func(interface{}) { logFile.Close() })
+	go rec.Listen()
+	defer func() { rec.GetChannels().chCtl <- SignalStop }()
+	if err := logger.RegisterRecorder("direct", rec.GetChannels()); err != nil {
+		t.Errorf("recorder register fail: %s", err.Error())
 		return
 	}
 	if err := logger.Initialise(); err != nil {
@@ -239,7 +301,7 @@ func TestSeverityMask(t *testing.T) {
 		defer logger.Close()
 	}
 
-	// > include
+	// sev. include option //
 	if err := logger.SetSeverityMask("direct", Error|Notice|Info|Debug); err != nil {
 		t.Errorf("%s", err.Error())
 		return
@@ -252,16 +314,12 @@ func TestSeverityMask(t *testing.T) {
 		t.Errorf("unexpected mask value\ncurrent:  %016b\nexpected: %016b", v, 0x3A)
 	}
 
-	logger.Write(Emerg, "4 should be hidden")
-	logger.Write(Alert, "4 should be hidden")
-	logger.Write(Critical, "4 should be hidden")
-	//logger.Write(Error,    "4 should be visible")
-	logger.Write(Warning, "4 should be hidden")
-	//logger.Write(Notice,   "4 should be visible")
-	//logger.Write(Info,     "4 should be visible")
-	//logger.Write(Debug,   "4 should be visible")
+	logger.Write(Emerg, "should be hidden")
+	logger.Write(Alert, "should be hidden")
+	logger.Write(Critical, "should be hidden")
+	logger.Write(Warning, "should be hidden")
 
-	// > exclude
+	// sev. exclude option //
 	if err := logger.SetSeverityMask("direct", SeverityAll&^Critical&^Error); err != nil {
 		t.Errorf("%s", err.Error())
 		return
@@ -274,18 +332,11 @@ func TestSeverityMask(t *testing.T) {
 		t.Errorf("unexpected mask value\ncurrent:  %016b\nexpected: %016b", v, 0xFFC)
 	}
 
-	//logger.Write(Emerg, "4 should be visible")
-	//logger.Write(Alert, "4 should be visible")
-	logger.Write(Critical, "4 should be hidden")
-	logger.Write(Error, "4 should be hidden")
-	//logger.Write(Warning,  "4 should be visible")
-	//logger.Write(Notice,   "4 should be visible")
-	//logger.Write(Info,     "4 should be visible")
-	//logger.Write(Debug1,   "4 should be visible")
-	//logger.Write(Debug2,   "4 should be visible")
-	//logger.Write(Debug3,   "4 should be visible")
+	logger.Write(Critical, "should be hidden")
+	logger.Write(Error, "should be hidden")
 }
 
+/*
 func TestUnregistering(t *testing.T) {
 	logger := NewLogger()
 	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -346,109 +397,6 @@ func TestStackTrace(t *testing.T) {
 	}
 }
 
-var testValueName string
-var testValueOutpFlag bool
-
-func testValue(t *testing.T, value int, expected int) bool { // utility function
-	if value != expected {
-		t.Errorf("unexpected %s value\ncurrent:  %d\nexpected: %d",
-			testValueName, value, expected)
-		return false
-	}
-	if testValueOutpFlag {
-		t.Logf("%s value: %d", testValueName, value)
-	}
-	return true
-}
-
-func TestRefCounters(t *testing.T) {
-	logger1 := NewLogger()
-	logger2 := NewLogger()
-	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		t.Errorf("file open fail: %s", err.Error())
-		return
-	}
-	recorder := NewIoDirectRecorder(logFile)
-	logger1.RegisterRecorder("direct", recorder)
-	logger2.RegisterRecorder("direct", recorder)
-	testValueName = "reference counter"
-
-	t.Log("--> 1st initialisation of logger1")
-	t.Log("--> 1st initialisation of logger2")
-	if !testValue(t, recorder.refCounter, 0) {
-		return
-	}
-	if err := logger1.Initialise(); err != nil {
-		t.Errorf("initialisation error: %s", err.Error())
-	}
-	if !testValue(t, recorder.refCounter, 1) {
-		return
-	}
-	if err := logger2.Initialise(); err != nil {
-		t.Errorf("initialisation error: %s", err.Error())
-	}
-	if !testValue(t, recorder.refCounter, 2) {
-		return
-	}
-
-	// trying second initialisation call
-	t.Log("--> 2nd initialisation of logger2")
-	if err := logger2.Initialise(); err != nil {
-		t.Logf("initialisation error: %s", err.Error())
-		return
-	}
-	if !testValue(t, recorder.refCounter, 2) {
-		return
-	}
-
-	// ----------
-
-	t.Log("--> writing to loggers")
-	if err := logger1.Write(Info, "6 logger 1 message"); err != nil {
-		t.Errorf("logger 1 write error: %s", err.Error())
-	}
-	if err := logger2.Write(Info, "6 logger 2 message"); err != nil {
-		t.Errorf("logger 2 write error: %s", err.Error())
-	}
-
-	// ----------
-
-	t.Log("--> closing logger1")
-	logger1.Close()
-	if !testValue(t, recorder.refCounter, 1) {
-		return
-	}
-
-	// logger.WriteMsg() protection test
-	if err := logger1.Write(Info, "6 this write call should be failed"); err == nil {
-		t.Errorf("FAIL (1), this write call should return error\n" +
-			"we shouldn't be able to write to the closed logger")
-		return
-	}
-
-	if err := logger2.Write(Info, "6 should be visible"); err != nil {
-		t.Errorf("write error after 1st close: %s", err.Error())
-		return
-	}
-
-	t.Log("--> 1st closing of logger2")
-	logger2.Close()
-	if !testValue(t, recorder.refCounter, 0) {
-		return
-	}
-	if err := logger2.Write(Info, "5 this write call should be failed"); err == nil {
-		t.Errorf("FAIL (2), this write call should return error")
-		return
-	}
-
-	// trying second close call
-	t.Log("--> 2st closing of logger2")
-	logger2.Close()
-	if !testValue(t, recorder.refCounter, 0) {
-		return
-	}
-}
 */
 
 // -----------------------------------------------------------------------------
