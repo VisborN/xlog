@@ -9,9 +9,13 @@ import (
 type recorderSignal string
 
 type ioDirectRecorder struct {
-	chCtl chan ControlSignal
-	chMsg chan *LogMsg
-	chErr chan error
+	// We used two-way channels here (for convenience), so
+	// you should be careful at using it inside the recorder.
+
+	chCtl chan ControlSignal  // receives a control signals
+	chMsg chan *LogMsg        // receives a log message
+	chErr chan error          // returns status feedback for some actions
+	chDbg chan<- debugMessage // used for debuging output if specified
 
 	listening  bool
 	refCounter int
@@ -29,11 +33,12 @@ func (R *ioDirectRecorder) initChannels() {
 
 // NewIoDirectRecorder allocates and returns a new io direct recorder.
 func NewIoDirectRecorder(
-	writer io.Writer, errChannel chan error, prefix ...string,
+	writer io.Writer, errChannel chan error, dbgChannel chan<- debugMessage, prefix ...string,
 ) *ioDirectRecorder {
 	r := new(ioDirectRecorder)
 	r.chCtl = make(chan ControlSignal, 256)
 	r.chMsg = make(chan *LogMsg, 256)
+	r.chDbg = dbgChannel
 	if errChannel != nil {
 		r.chErr = errChannel
 	} else {
@@ -69,24 +74,26 @@ get_rand:
 	}
 	dbg_rand_buffer = append(dbg_rand_buffer, id)
 
+	R._log("start recorder listener, id=%d", id) // TEMPORARY
+
 	for {
 		select {
 		case msg := <-R.chCtl:
 			switch msg {
 			case SignalInit:
-				fmt.Printf("[r%d] RECV INIT SIGNAL", id)
+				R._log("r%d | RECV INIT SIGNAL", id)
 				R.initialise()
 				R.chErr <- nil // error ain't possible
 			case SignalClose:
-				fmt.Printf("[r%d] RECV CLOSE SIGNAL", id)
+				R._log("r%d | RECV CLOSE SIGNAL", id)
 				R.close()
-				//fmt.Printf("[r%d] .refCounter=%d", id, R.refCounter)
+				//R._log("r%d | .refCounter=%d", id, R.refCounter)
 			case SignalStop: // TODO
-				fmt.Printf("[r%d] RECV STOP SIGNAL", id)
+				R._log("r%d | RECV STOP SIGNAL", id)
 				R.listening = false
 				return
 			default:
-				fmt.Printf("[r%d] RECV UNKNOWN SIGNAL", id)
+				R._log("r%d | RECV UNKNOWN SIGNAL", id)
 				R.chErr <- ErrUnknownSignal
 				// unknown signal, skip
 			}
@@ -132,6 +139,12 @@ func (R *ioDirectRecorder) OnClose(f func(interface{})) *ioDirectRecorder {
 	return R
 }
 
+// DropDebugger sets debug channel to nil if it has been passed earlier.
+// It allows the recorder to continue normal work when debug listener stopped.
+func (R *ioDirectRecorder) DropDebugger() {
+	R.chDbg = nil
+}
+
 func (R *ioDirectRecorder) write(msg LogMsg) error {
 	if R.refCounter == 0 {
 		return ErrNotInitialised
@@ -150,6 +163,13 @@ func (R *ioDirectRecorder) write(msg LogMsg) error {
 		return fmt.Errorf("writer error: %s", err.Error())
 	}
 	return nil
+}
+
+func (R *ioDirectRecorder) _log(format string, args ...interface{}) {
+	if R.chDbg != nil {
+		msg := DbgMsg(format, args...)
+		R.chDbg <- msg
+	}
 }
 
 // TODO: more flags
