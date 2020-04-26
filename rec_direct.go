@@ -3,6 +3,7 @@ package xlog
 import (
 	"fmt"
 	"io"
+	"math/rand"
 )
 
 type recorderSignal string
@@ -51,24 +52,41 @@ func (R *ioDirectRecorder) GetChannels() ChanBundle {
 	return ChanBundle{R.chCtl, R.chMsg, R.chErr}
 }
 
+var dbg_rand_buffer []int
+
 func (R *ioDirectRecorder) Listen() {
 	if R.listening {
 		return
 	}
 	R.listening = true
+
+get_rand:
+	id := rand.Intn(10)
+	for _, v := range dbg_rand_buffer {
+		if v == id {
+			goto get_rand
+		}
+	}
+	dbg_rand_buffer = append(dbg_rand_buffer, id)
+
 	for {
 		select {
 		case msg := <-R.chCtl:
 			switch msg {
 			case SignalInit:
+				fmt.Printf("[r%d] RECV INIT SIGNAL", id)
 				R.initialise()
 				R.chErr <- nil // error ain't possible
 			case SignalClose:
+				fmt.Printf("[r%d] RECV CLOSE SIGNAL", id)
 				R.close()
+				//fmt.Printf("[r%d] .refCounter=%d", id, R.refCounter)
 			case SignalStop: // TODO
+				fmt.Printf("[r%d] RECV STOP SIGNAL", id)
 				R.listening = false
 				return
 			default:
+				fmt.Printf("[r%d] RECV UNKNOWN SIGNAL", id)
 				R.chErr <- ErrUnknownSignal
 				// unknown signal, skip
 			}
