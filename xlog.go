@@ -8,6 +8,16 @@ import (
 	"time"
 )
 
+// TODO: writing with no refs
+// TODO: ChanBundle field access
+
+// TODO: glob rec list
+// TODO: prevent writing w/o refs
+// TODO: closer function behaviour
+// TODO: nil.Func(): check out returns
+// TODO: start/stop listener after/before ctl message (+defer)
+// go rec.Listen() call. DO SOMETHING
+
 /*  xlog message flags
 
     xxxx xxxx xxxx xxxx
@@ -238,9 +248,7 @@ func (L *Logger) RegisterRecorder(id RecorderID, channels ChanBundle) error {
 
 // RegisterRecorder registers the recorder in the logger with the given id.
 // asDefault parameter says whether the need to set it as default recorder.
-//
-// TODO: idk, looks like channels isn't good name for this
-func (L *Logger) RegisterRecorderEx(id RecorderID, channels ChanBundle, asDefault bool) error {
+func (L *Logger) RegisterRecorderEx(id RecorderID, intrf ChanBundle, asDefault bool) error {
 	// This function should configure all related fields. Other functions
 	// will return an error or cause panic if they meet a wrong logger data.
 
@@ -255,7 +263,7 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, channels ChanBundle, asDefaul
 			}
 		}
 	}
-	L.recorders[id] = channels
+	L.recorders[id] = intrf
 
 	// setup initialisation state
 	if L.recordersState == nil {
@@ -326,6 +334,10 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 			L.defaults = L.defaults[:len(L.defaults)-1]
 			break // duplicates ain't possible
 		}
+	}
+
+	if len(L.recorders) == 1 {
+		L.initialised = false
 	}
 
 	delete(L.recorders, id)
