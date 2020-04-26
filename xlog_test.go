@@ -269,6 +269,7 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("unregistering error: %s", err.Error())
 		return
 	}
+	runtime.Gosched()
 	if !testFunc(rec.refCounter, 1) {
 		t.Logf("<debug data>\nrecorder: %v\nlogger: %v", rec, logger1)
 	} else {
@@ -292,6 +293,7 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("unregistering error: %s", err.Error())
 		return
 	}
+	runtime.Gosched()
 	if !testFunc(rec.refCounter, 0) {
 		t.Logf("recorder: %v", rec)
 	} else {
