@@ -6,13 +6,25 @@ import (
 	"runtime"
 )
 
+// The error returns when recorder id can not be found in the
+// recorder list or if the new id already used in the logger object.
 var ErrWrongRecorderID = errors.New("wrong recorder id")
+
 var ErrNotInitialised = errors.New("not initialised")
+
+// TODO: description
 var ErrWrongFlagValue = errors.New("wrong flag value")
 
+// The error returns when user tries to write to the empty logger.
 var ErrNoRecorders = errors.New("the logger has no registered recorders")
+
+// The error returns when a user tries to write to the logger without
+// default recorders with unspecified custom recorders field (nil).
 var ErrNotWhereToWrite = errors.New("the logger has no default recorders, " +
 	"but custom recorders are not specified")
+
+// The error transmits by recorder listener when it receives unknown signal.
+var ErrUnknownSignal = errors.New("unknown signal")
 
 // -----------------------------------------------------------------------------
 
