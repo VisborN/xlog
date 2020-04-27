@@ -50,7 +50,8 @@ func TestGeneral(t *testing.T) {
 	t.Log("listen <-")
 	go rec.Listen() // <----
 	//defer func() { rec.GetChannels().chCtl <- SignalStop }()
-	runtime.Gosched() // to allow VM switch stream
+	dc <- DbgMsg("goshed")
+	runtime.Gosched()
 	if !rec.IsListening() {
 		t.Errorf("CRITICAL: recorder isn't listening")
 		return
@@ -190,6 +191,7 @@ func TestInitialisation(t *testing.T) {
 
 func TestRefCounter(t *testing.T) {
 	dc <- DbgMsg("--- TestRefCounter()")
+	//runtime.Gosched() // we don't use def. rec in prev test
 
 	var testValOutputFlag bool = true
 	var testValName string = "reference counter"
@@ -208,6 +210,7 @@ func TestRefCounter(t *testing.T) {
 	logger1 := NewLogger()
 	logger2 := NewLogger()
 	rec := NewIoDirectRecorder(os.Stdout, nil, dc)
+	defer func() { runtime.Gosched() }()
 	go rec.Listen()
 	defer func() {
 		dc <- DbgMsg("rec1 defer")
@@ -223,6 +226,7 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("initialisation error: %s", err.Error())
 		return
 	}
+	runtime.Gosched()
 	if !testFunc(rec.refCounter, 1) {
 	} else {
 		t.Log("OK")
@@ -233,6 +237,7 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("initialisation error: %s", err.Error())
 		return
 	}
+	runtime.Gosched()
 	if !testFunc(rec.refCounter, 2) {
 	} else {
 		t.Log("OK")
@@ -243,6 +248,7 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("initialisation error: %s", err.Error())
 		return
 	}
+	runtime.Gosched()
 	if !testFunc(rec.refCounter, 2) {
 	} else {
 		t.Log("OK")
@@ -269,6 +275,7 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("unregistering error: %s", err.Error())
 		return
 	}
+	dc <- DbgMsg("goshed")
 	runtime.Gosched()
 	if !testFunc(rec.refCounter, 1) {
 		t.Logf("<debug data>\nrecorder: %v\nlogger: %v", rec, logger1)
@@ -293,6 +300,7 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("unregistering error: %s", err.Error())
 		return
 	}
+	dc <- DbgMsg("goshed")
 	runtime.Gosched()
 	if !testFunc(rec.refCounter, 0) {
 		t.Logf("recorder: %v", rec)
@@ -339,16 +347,19 @@ func TestSeverityOrder(t *testing.T) {
 	}
 	rec := NewIoDirectRecorder(logFile, nil, dc).OnClose(func(interface{}) { logFile.Close() })
 	go rec.Listen()
+	defer func() { runtime.Gosched() }()
 	defer func() { rec.GetChannels().chCtl <- SignalStop }()
 	if err := logger.RegisterRecorder("direct", rec.GetChannels()); err != nil {
 		t.Errorf("recorder register fail: %s", err.Error())
 		return
 	}
+	dc <- DbgMsg("logger: %v", logger)
+	dc <- DbgMsg("recorder: %v", rec)
 	if err := logger.Initialise(); err != nil {
 		if br, ok := err.(BatchResult); ok {
 			msg := br.Error()
-			for _, e := range br.Errors() {
-				msg += fmt.Sprintf("\n%s", e.Error())
+			for r, e := range br.Errors() {
+				msg += fmt.Sprintf("\n%s: %s", r, e.Error())
 			}
 			t.Errorf("%s", msg)
 			return
@@ -398,8 +409,6 @@ func TestSeverityOrder(t *testing.T) {
 
 func TestSeverityMask(t *testing.T) {
 	dc <- DbgMsg("--- TestSeverityMask()")
-	dc <- DbgMsg("goshed")
-	runtime.Gosched()
 
 	logger := NewLogger()
 	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
@@ -411,6 +420,7 @@ func TestSeverityMask(t *testing.T) {
 		logFile.Close()
 	})
 	go rec.Listen()
+	//defer func() { runtime.Gosched() }()
 	defer func() { rec.GetChannels().chCtl <- SignalStop }()
 	if err := logger.RegisterRecorder("direct", rec.GetChannels()); err != nil {
 		t.Errorf("recorder register fail: %s", err.Error())
