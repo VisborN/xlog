@@ -33,12 +33,11 @@ func (R *ioDirectRecorder) initChannels() {
 
 // NewIoDirectRecorder allocates and returns a new io direct recorder.
 func NewIoDirectRecorder(
-	writer io.Writer, errChannel chan error, dbgChannel chan<- debugMessage, prefix ...string,
+	writer io.Writer, errChannel chan error, prefix ...string,
 ) *ioDirectRecorder {
 	r := new(ioDirectRecorder)
 	r.chCtl = make(chan ControlSignal, 256)
 	r.chMsg = make(chan *LogMsg, 256)
-	r.chDbg = dbgChannel
 	if errChannel != nil {
 		r.chErr = errChannel
 	} else {
@@ -51,6 +50,11 @@ func NewIoDirectRecorder(
 		r.prefix = prefix[0]
 	}
 	return r
+}
+
+func (R *ioDirectRecorder) SetDbgChannel(ch chan<- debugMessage) *ioDirectRecorder {
+	R.chDbg = ch
+	return R
 }
 
 func (R *ioDirectRecorder) GetChannels() ChanBundle {

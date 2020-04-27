@@ -49,7 +49,8 @@ func ResetErrChan(chErr <-chan error) {
 func TestGeneral(t *testing.T) {
 	dc <- DbgMsg("--- TestGeneral()")
 	logger := NewLogger()
-	rec := NewIoDirectRecorder(os.Stdout, nil, dc)
+	rec := NewIoDirectRecorder(os.Stdout, nil)
+	rec.SetDbgChannel(dc)
 	bundle := rec.GetChannels()
 	t.Log("register recorder...")
 	if err := logger.RegisterRecorder("direct", bundle); err != nil {
@@ -223,7 +224,8 @@ func TestRefCounter(t *testing.T) {
 
 	logger1 := NewLogger()
 	logger2 := NewLogger()
-	rec := NewIoDirectRecorder(os.Stdout, nil, dc)
+	rec := NewIoDirectRecorder(os.Stdout, nil)
+	rec.SetDbgChannel(dc)
 	defer func() { runtime.Gosched() }()
 	go rec.Listen()
 	defer func() {
@@ -271,7 +273,8 @@ func TestRefCounter(t *testing.T) {
 	// ----------------------------------------
 
 	{ // for additional checks
-		rec2 := NewIoDirectRecorder(os.Stdout, nil, dc)
+		rec2 := NewIoDirectRecorder(os.Stdout, nil)
+		rec2.SetDbgChannel(dc)
 		go rec2.Listen()
 		defer func() {
 			dc <- DbgMsg("rec2 defer")
@@ -360,7 +363,9 @@ func TestSeverityOrder(t *testing.T) {
 		t.Errorf("file open fail: %s", err.Error())
 		return
 	}
-	rec := NewIoDirectRecorder(logFile, nil, dc).OnClose(func(interface{}) { logFile.Close() })
+	rec := NewIoDirectRecorder(logFile, nil).
+		OnClose(func(interface{}) { logFile.Close() }).
+		SetDbgChannel(dc)
 	go rec.Listen()
 	defer func() { runtime.Gosched() }()
 	defer func() { rec.GetChannels().chCtl <- SignalStop }()
@@ -432,7 +437,7 @@ func TestSeverityMask(t *testing.T) {
 		t.Errorf("file open fail: %s", err.Error())
 		return
 	}
-	rec := NewIoDirectRecorder(logFile, nil, dc).OnClose(func(interface{}) {
+	rec := NewIoDirectRecorder(logFile, nil).SetDbgChannel(dc).OnClose(func(interface{}) {
 		logFile.Close()
 	})
 	go rec.Listen()
