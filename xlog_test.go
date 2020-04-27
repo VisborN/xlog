@@ -398,6 +398,8 @@ func TestSeverityOrder(t *testing.T) {
 
 func TestSeverityMask(t *testing.T) {
 	dc <- DbgMsg("--- TestSeverityMask()")
+	dc <- DbgMsg("goshed")
+	runtime.Gosched()
 
 	logger := NewLogger()
 	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
