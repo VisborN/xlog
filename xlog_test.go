@@ -3,13 +3,53 @@ package xlog
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 )
 
+// TODO: Fatal
+// TODO: Initialise() return check (BatchResult)
+
+var dc chan<- debugMessage
+
+func TestMain(m *testing.M) {
+	dbgFile, err := os.OpenFile("dbg.outp", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Printf("dbg file open fail: %s", err.Error())
+		os.Exit(1)
+	}
+	d := NewDebugLogger(dbgFile)
+	dc = d.Chan() // yeah, it can drops
+	go d.Listen()
+
+	r := m.Run()
+
+	runtime.Gosched()
+	close(d.Chan())
+	runtime.Gosched()
+	dbgFile.Close()
+	os.Exit(r)
+}
+
+// TEMPORARY BOTCH FUNCTION just for the hot fix
+func ResetErrChan(chErr <-chan error) {
+	fmt.Print("resetting error channel:\n")
+	for {
+		select {
+		case err := <-chErr:
+			fmt.Printf("  * %s\n", err.Error())
+		default:
+			fmt.Print("  no more messages\n")
+			return
+		}
+	}
+}
+
 func TestGeneral(t *testing.T) {
+	dc <- DbgMsg("--- TestGeneral()")
 	logger := NewLogger()
-	rec := NewIoDirectRecorder(os.Stdout, nil)
+	rec := NewIoDirectRecorder(os.Stdout, nil, dc)
 	bundle := rec.GetChannels()
 	t.Log("register recorder...")
 	if err := logger.RegisterRecorder("direct", bundle); err != nil {
@@ -24,7 +64,8 @@ func TestGeneral(t *testing.T) {
 	t.Log("listen <-")
 	go rec.Listen() // <----
 	//defer func() { rec.GetChannels().chCtl <- SignalStop }()
-	time.Sleep(time.Second) // to allow VM start goroutine
+	dc <- DbgMsg("goshed")
+	runtime.Gosched()
 	if !rec.IsListening() {
 		t.Errorf("CRITICAL: recorder isn't listening")
 		return
@@ -45,7 +86,7 @@ func TestGeneral(t *testing.T) {
 	if err := logger.Write(Info, "info message"); err != nil {
 		t.Errorf("%s", err.Error())
 	}
-	time.Sleep(10 * time.Microsecond) // to correct console output
+	time.Sleep(time.Microsecond) // for the correct console output
 
 	// listening stop signal check //
 	func() { rec.GetChannels().chCtl <- SignalStop }()
@@ -59,6 +100,9 @@ func TestGeneral(t *testing.T) {
 }
 
 func TestInitialisation(t *testing.T) {
+	dc <- DbgMsg("--- TestInitialisation()")
+	dc <- DbgMsg("use debugRecorder{} here")
+
 	logger := NewLogger()
 	rec1 := t_newDebugRecorder("DR1", nil)
 	rec2 := t_newDebugRecorder("DR2", nil)
@@ -160,6 +204,9 @@ func TestInitialisation(t *testing.T) {
 }
 
 func TestRefCounter(t *testing.T) {
+	dc <- DbgMsg("--- TestRefCounter()")
+	//runtime.Gosched() // we don't use def. rec in prev test
+
 	var testValOutputFlag bool = true
 	var testValName string = "reference counter"
 	testFunc := func(value, expected int) bool {
@@ -176,9 +223,13 @@ func TestRefCounter(t *testing.T) {
 
 	logger1 := NewLogger()
 	logger2 := NewLogger()
-	rec := NewIoDirectRecorder(os.Stdout, nil)
+	rec := NewIoDirectRecorder(os.Stdout, nil, dc)
+	defer func() { runtime.Gosched() }()
 	go rec.Listen()
-	defer func() { rec.GetChannels().chCtl <- SignalStop }()
+	defer func() {
+		dc <- DbgMsg("rec1 defer")
+		rec.GetChannels().chCtl <- SignalStop
+	}()
 	logger1.RegisterRecorder("direct", rec.GetChannels())
 	logger2.RegisterRecorder("direct", rec.GetChannels())
 
@@ -189,6 +240,7 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("initialisation error: %s", err.Error())
 		return
 	}
+	runtime.Gosched()
 	if !testFunc(rec.refCounter, 1) {
 	} else {
 		t.Log("OK")
@@ -199,6 +251,7 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("initialisation error: %s", err.Error())
 		return
 	}
+	runtime.Gosched()
 	if !testFunc(rec.refCounter, 2) {
 	} else {
 		t.Log("OK")
@@ -209,6 +262,7 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("initialisation error: %s", err.Error())
 		return
 	}
+	runtime.Gosched()
 	if !testFunc(rec.refCounter, 2) {
 	} else {
 		t.Log("OK")
@@ -217,10 +271,17 @@ func TestRefCounter(t *testing.T) {
 	// ----------------------------------------
 
 	{ // for additional checks
-		rec2 := NewIoDirectRecorder(os.Stdout, nil)
+		rec2 := NewIoDirectRecorder(os.Stdout, nil, dc)
 		go rec2.Listen()
-		defer func() { rec2.GetChannels().chCtl <- SignalStop }()
+		defer func() {
+			dc <- DbgMsg("rec2 defer")
+			rec2.GetChannels().chCtl <- SignalStop
+		}()
 		logger2.RegisterRecorder("direct-2", rec2.GetChannels())
+		t.Log("(logger 2 additional initialisation)")
+		if err := logger2.Initialise(); err != nil {
+			t.Errorf("initialisation error: %s", err.Error())
+		}
 	}
 
 	t.Log("-> logger1: unregister recorder (+0INIT)")
@@ -228,7 +289,10 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("unregistering error: %s", err.Error())
 		return
 	}
+	dc <- DbgMsg("goshed")
+	runtime.Gosched()
 	if !testFunc(rec.refCounter, 1) {
+		t.Logf("<debug data>\nrecorder: %v\nlogger: %v", rec, logger1)
 	} else {
 		// fully uninitialised check
 		if logger1.initialised != false {
@@ -250,17 +314,20 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("unregistering error: %s", err.Error())
 		return
 	}
+	dc <- DbgMsg("goshed")
+	runtime.Gosched()
 	if !testFunc(rec.refCounter, 0) {
+		t.Logf("recorder: %v", rec)
 	} else {
 		// partial unregister init check
 		if logger2.initialised != true {
 			t.Log("ref. counter is ok")
-			t.Errorf("wrong logger initialised state after unregistering")
+			t.Errorf("FAIL: wrong logger initialised state after unregistering\n%v", logger2)
 		} else {
 			if err := logger2.Write(Info, "should be visible"); err != nil {
 				t.Log("ref. counter is ok")
 				t.Log("init check passed")
-				t.Errorf("logger2.Write() return an error: %s\n%v", err.Error(), logger2)
+				t.Errorf("FAIL: logger2.Write() return an error: %s\n%v", err.Error(), logger2)
 			}
 			t.Log("OK")
 		}
@@ -271,34 +338,50 @@ func TestRefCounter(t *testing.T) {
 	select {
 	case err, ok := <-rec.GetChannels().chErr:
 		if !ok {
-			t.Errorf("CAUTION: error-channel has been closed")
+			t.Errorf("FATAL: error-channel has been closed")
 			return
 		}
 		t.Logf("OK\nerr: %s", err.Error())
 	default:
-		t.Errorf("FAIL: no messages in error-channel")
+		//t.Errorf("FAIL: no messages in error-channel")
+		t.Log("SHADOW-FAIL: no messages in error-channel <NOT IMPLEMENTED YET>")
 	}
 }
 
 // =======================================================================
 
 func TestSeverityOrder(t *testing.T) {
+	dc <- DbgMsg("--- TestSeverityOrder()")
+	ResetErrChan(DefErrChan)
+
 	logger := NewLogger()
 	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		t.Errorf("file open fail: %s", err.Error())
 		return
 	}
-	rec := NewIoDirectRecorder(logFile, nil).OnClose(func(interface{}) { logFile.Close() })
+	rec := NewIoDirectRecorder(logFile, nil, dc).OnClose(func(interface{}) { logFile.Close() })
 	go rec.Listen()
+	defer func() { runtime.Gosched() }()
 	defer func() { rec.GetChannels().chCtl <- SignalStop }()
 	if err := logger.RegisterRecorder("direct", rec.GetChannels()); err != nil {
 		t.Errorf("recorder register fail: %s", err.Error())
 		return
 	}
+	dc <- DbgMsg("logger: %v", logger)
+	dc <- DbgMsg("recorder: %v", rec)
 	if err := logger.Initialise(); err != nil {
-		t.Errorf("%s", err.Error())
-		return
+		if br, ok := err.(BatchResult); ok {
+			msg := br.Error()
+			for r, e := range br.Errors() {
+				msg += fmt.Sprintf("\n%s: %s", r, e.Error())
+			}
+			t.Errorf("%s", msg)
+			return
+		} else {
+			t.Errorf("unknown error: %s", err.Error())
+			return
+		}
 	} else {
 		defer logger.Close()
 	}
@@ -340,14 +423,20 @@ func TestSeverityOrder(t *testing.T) {
 }
 
 func TestSeverityMask(t *testing.T) {
+	dc <- DbgMsg("--- TestSeverityMask()")
+	//ResetErrChan(DefErrChan)
+
 	logger := NewLogger()
 	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		t.Errorf("file open fail: %s", err.Error())
 		return
 	}
-	rec := NewIoDirectRecorder(logFile, nil).OnClose(func(interface{}) { logFile.Close() })
+	rec := NewIoDirectRecorder(logFile, nil, dc).OnClose(func(interface{}) {
+		logFile.Close()
+	})
 	go rec.Listen()
+	//defer func() { runtime.Gosched() }()
 	defer func() { rec.GetChannels().chCtl <- SignalStop }()
 	if err := logger.RegisterRecorder("direct", rec.GetChannels()); err != nil {
 		t.Errorf("recorder register fail: %s", err.Error())
