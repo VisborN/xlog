@@ -32,6 +32,20 @@ func TestMain(m *testing.M) {
 	os.Exit(r)
 }
 
+// TEMPORARY BOTCH FUNCTION just for the hot fix
+func ResetErrChan(chErr <-chan error) {
+	fmt.Print("resetting error channel:\n")
+	for {
+		select {
+		case err := <-chErr:
+			fmt.Printf("  * %s\n", err.Error())
+		default:
+			fmt.Print("  no more messages\n")
+			return
+		}
+	}
+}
+
 func TestGeneral(t *testing.T) {
 	dc <- DbgMsg("--- TestGeneral()")
 	logger := NewLogger()
@@ -338,6 +352,7 @@ func TestRefCounter(t *testing.T) {
 
 func TestSeverityOrder(t *testing.T) {
 	dc <- DbgMsg("--- TestSeverityOrder()")
+	ResetErrChan(DefErrChan)
 
 	logger := NewLogger()
 	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
@@ -409,6 +424,7 @@ func TestSeverityOrder(t *testing.T) {
 
 func TestSeverityMask(t *testing.T) {
 	dc <- DbgMsg("--- TestSeverityMask()")
+	//ResetErrChan(DefErrChan)
 
 	logger := NewLogger()
 	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)

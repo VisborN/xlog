@@ -98,9 +98,11 @@ get_rand:
 				// unknown signal, skip
 			}
 		case msg := <-R.chMsg:
+			R._log("r%d | RECV MSG", id)
 			err := R.write(*msg)
 			if err != nil {
-				R.chErr <- err
+				R._log("r%d | ERR: %s", id, err.Error())
+				R.chErr <- fmt.Errorf("[r%d] %s", id, err.Error())
 			}
 		}
 	}
