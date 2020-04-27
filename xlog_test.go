@@ -100,6 +100,33 @@ func TestGeneral(t *testing.T) {
 	}
 }
 
+func TestSyslogRecorder(t *testing.T) {
+	dc <- DbgMsg("--- TestSyslogRecorder()")
+	logger := NewLogger()
+	rec := NewSyslogRecorder(nil, "XLOG")
+	rec.SetDbgChannel(dc)
+	go rec.Listen()
+	defer func() { runtime.Gosched() }()
+	defer func() { rec.GetChannels().chCtl <- SignalStop }()
+	if err := logger.RegisterRecorder("syslog", rec.GetChannels()); err != nil {
+		t.Errorf("recorder register fail: syslog")
+	}
+	t.Log("initialising logger...")
+	if err := logger.Initialise(); err != nil {
+		t.Errorf("%s", err.Error())
+		return
+	} else {
+		t.Log("OK")
+		defer logger.Close()
+	}
+	t.Log("sending message...")
+	if err := logger.Write(Info, "syslog info message"); err != nil {
+		t.Errorf("%s", err.Error())
+	} else {
+		t.Log("OK")
+	}
+}
+
 func TestInitialisation(t *testing.T) {
 	dc <- DbgMsg("--- TestInitialisation()")
 	dc <- DbgMsg("use debugRecorder{} here")

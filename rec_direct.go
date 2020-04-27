@@ -78,7 +78,7 @@ get_rand:
 	}
 	dbg_rand_buffer = append(dbg_rand_buffer, id)
 
-	R._log("start recorder listener, id=%d", id) // TEMPORARY
+	R._log("start recorder listener, id=%d", id)
 
 	for {
 		select {
@@ -106,7 +106,7 @@ get_rand:
 			err := R.write(*msg)
 			if err != nil {
 				R._log("r%d | ERR: %s", id, err.Error())
-				R.chErr <- fmt.Errorf("[r%d] %s", id, err.Error())
+				R.chErr <- fmt.Errorf("[r%d] %s", id, err.Error()) // TODO
 			}
 		}
 	}

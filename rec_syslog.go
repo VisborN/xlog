@@ -8,6 +8,12 @@ import (
 var errWrongPriority = errors.New("wrong priority value")
 
 type syslogRecorder struct {
+	chCtl chan ControlSignal  // receives a control signals
+	chMsg chan *LogMsg        // receives a log message
+	chErr chan error          // returns status feedback for some actions
+	chDbg chan<- debugMessage // used for debuging output if specified
+
+	listening  bool
 	refCounter int
 	prefix     string
 	format     FormatFunc
@@ -18,8 +24,15 @@ type syslogRecorder struct {
 }
 
 // NewSyslogRecorder allocates and returns a new syslog recorder.
-func NewSyslogRecorder(prefix string) *syslogRecorder {
+func NewSyslogRecorder(errChannel chan error, prefix string) *syslogRecorder {
 	r := new(syslogRecorder)
+	r.chCtl = make(chan ControlSignal, 256)
+	r.chMsg = make(chan *LogMsg, 256)
+	if errChannel != nil {
+		r.chErr = errChannel
+	} else {
+		r.chErr = DefErrChan
+	}
 	r.refCounter = 0
 	r.prefix = prefix
 	r.sevBindings = make(map[MsgFlagT]syslog.Priority)
@@ -40,27 +53,51 @@ func NewSyslogRecorder(prefix string) *syslogRecorder {
 	return r
 }
 
-// BindSeverityFlag rebinds severity flag to the new syslog priority code.
-func (R *syslogRecorder) BindSeverityFlag(severity MsgFlagT, priority syslog.Priority) error {
-	severity = severity &^ SeverityShadowMask
-	if _, exist := R.sevBindings[severity]; !exist {
-		return ErrWrongFlagValue
-	}
+func (R *syslogRecorder) SetDbgChannel(ch chan<- debugMessage) *syslogRecorder {
+	R.chDbg = ch
+	return R
+}
 
-	if // syslog.Priority can contains facility codes
-	priority != syslog.LOG_EMERG &&
-		priority != syslog.LOG_ALERT &&
-		priority != syslog.LOG_CRIT &&
-		priority != syslog.LOG_ERR &&
-		priority != syslog.LOG_WARNING &&
-		priority != syslog.LOG_NOTICE &&
-		priority != syslog.LOG_INFO &&
-		priority != syslog.LOG_DEBUG {
-		return errWrongPriority
-	}
+func (R *syslogRecorder) GetChannels() ChanBundle {
+	return ChanBundle{R.chCtl, R.chMsg, R.chErr}
+}
 
-	R.sevBindings[severity] = priority
-	return nil
+func (R *syslogRecorder) Listen() {
+	if R.listening {
+		return
+	}
+	R.listening = true
+
+	R._log("start recorder listener")
+
+	for {
+		select {
+		case msg := <-R.chCtl:
+			switch msg {
+			case SignalInit:
+				R._log("RECV INIT SIGNAL")
+				e := R.initialise()
+				R.chErr <- e
+			case SignalClose:
+				R._log("RECV CLOSE SIGNAL")
+				R.close()
+			case SignalStop:
+				R._log("RECV STOP SIGNAL")
+				R.listening = false
+				return
+			default:
+				R._log("RECV UNKNOWN SIGNAL")
+				R.chErr <- ErrUnknownSignal
+			}
+		case msg := <-R.chMsg:
+			R._log("RECV MSG")
+			err := R.write(*msg)
+			if err != nil {
+				R._log("ERR: %s", err.Error())
+				R.chErr <- err
+			}
+		}
+	}
 }
 
 func (R *syslogRecorder) initialise() error {
@@ -86,10 +123,39 @@ func (R *syslogRecorder) close() {
 	R.refCounter--
 }
 
+// BindSeverityFlag rebinds severity flag to the new syslog priority code.
+func (R *syslogRecorder) BindSeverityFlag(severity MsgFlagT, priority syslog.Priority) error {
+	severity = severity &^ SeverityShadowMask
+	if _, exist := R.sevBindings[severity]; !exist {
+		return ErrWrongFlagValue
+	}
+
+	if // syslog.Priority can contains facility codes
+	priority != syslog.LOG_EMERG &&
+		priority != syslog.LOG_ALERT &&
+		priority != syslog.LOG_CRIT &&
+		priority != syslog.LOG_ERR &&
+		priority != syslog.LOG_WARNING &&
+		priority != syslog.LOG_NOTICE &&
+		priority != syslog.LOG_INFO &&
+		priority != syslog.LOG_DEBUG {
+		return errWrongPriority
+	}
+
+	R.sevBindings[severity] = priority
+	return nil
+}
+
 // FormatFunc sets custom formatter function for this recorder.
 func (R *syslogRecorder) FormatFunc(f FormatFunc) *syslogRecorder {
 	R.format = f
 	return R
+}
+
+// DropDebugger sets debug channel to nil if it has been passed earlier.
+// It allows the recorder to continue normal work when debug listener stopped.
+func (R *syslogRecorder) DropDebugger() {
+	R.chDbg = nil
 }
 
 func (R *syslogRecorder) write(msg LogMsg) error {
@@ -128,4 +194,11 @@ func (R *syslogRecorder) write(msg LogMsg) error {
 	}
 
 	return nil
+}
+
+func (R *syslogRecorder) _log(format string, args ...interface{}) {
+	if R.chDbg != nil {
+		msg := DbgMsg(format, args...)
+		R.chDbg <- msg
+	}
 }
