@@ -25,7 +25,7 @@ func TestMain(m *testing.M) {
 
 	r := m.Run()
 
-	runtime.Gosched()
+	time.Sleep(time.Millisecond)
 	close(d.Chan())
 	runtime.Gosched()
 	dbgFile.Close()
@@ -448,6 +448,9 @@ func TestSeverityMask(t *testing.T) {
 	} else {
 		defer logger.Close()
 	}
+	runtime.Gosched() // TODO 451
+	// This calls needs because of current err return system.
+	// Blocking at <-err doesn't guarantee that op. completed.
 
 	// sev. include option //
 	if err := logger.SetSeverityMask("direct", Error|Notice|Info|Debug); err != nil {
