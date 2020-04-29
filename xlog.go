@@ -10,7 +10,6 @@ import (
 
 // TODO: (451) err return system
 // TODO: writing with no refs
-// TODO: ChanBundle field access
 
 // TODO: glob rec list
 // TODO: prevent writing w/o refs
@@ -201,9 +200,9 @@ type RecorderID string
 
 // CHanBundle structure represents recorder interface channels.
 type ChanBundle struct {
-	chCtl chan<- ControlSignal
-	chMsg chan<- *LogMsg
-	chErr <-chan error
+	ChCtl chan<- ControlSignal
+	ChMsg chan<- *LogMsg
+	ChErr <-chan error
 }
 
 type Logger struct {
@@ -322,7 +321,7 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 			return internalError(ieUnreachable, ".recordersState: missing valid id")
 		} else {
 			if initialised {
-				rc.chCtl <- SignalClose
+				rc.ChCtl <- SignalClose
 			}
 		}
 	}
@@ -368,9 +367,9 @@ func (L *Logger) Initialise() error {
 			if initialised {
 				continue
 			}
-			rec.chCtl <- SignalInit
+			rec.ChCtl <- SignalInit
 			/// response on initialisation error ///
-			err := <-rec.chErr
+			err := <-rec.ChErr
 			if err != nil {
 				// ACTIONS...
 				br.Fail(id, err)
@@ -404,7 +403,7 @@ func (L *Logger) Close() {
 		return
 	}
 	for _, rec := range L.recorders {
-		rec.chCtl <- SignalClose
+		rec.ChCtl <- SignalClose
 	}
 	L.initialised = false
 }
@@ -682,7 +681,7 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 			if ((*msg).flags&^SeverityShadowMask)&sevMask > 0 { // severity filter
 				rec := L.recorders[recID] // recorder id is valid, already checked
 
-				rec.chMsg <- msg
+				rec.ChMsg <- msg
 				br.OK(recID)
 				// NO ERROR CHECK
 			}

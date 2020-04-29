@@ -64,7 +64,7 @@ func TestGeneral(t *testing.T) {
 
 	t.Log("listen <-")
 	go rec.Listen() // <----
-	//defer func() { rec.GetChannels().chCtl <- SignalStop }()
+	//defer func() { rec.GetChannels().ChCtl <- SignalStop }()
 	dc <- DbgMsg("goshed")
 	runtime.Gosched()
 	if !rec.IsListening() {
@@ -90,7 +90,7 @@ func TestGeneral(t *testing.T) {
 	time.Sleep(time.Microsecond) // for the correct console output
 
 	// listening stop signal check //
-	func() { rec.GetChannels().chCtl <- SignalStop }()
+	func() { rec.GetChannels().ChCtl <- SignalStop }()
 	time.Sleep(time.Second) // to allow VM switch stream
 	t.Log("stop signal check...")
 	if rec.IsListening() {
@@ -107,7 +107,7 @@ func TestSyslogRecorder(t *testing.T) {
 	rec.SetDbgChannel(dc)
 	go rec.Listen()
 	defer func() { runtime.Gosched() }()
-	defer func() { rec.GetChannels().chCtl <- SignalStop }()
+	defer func() { rec.GetChannels().ChCtl <- SignalStop }()
 	if err := logger.RegisterRecorder("syslog", rec.GetChannels()); err != nil {
 		t.Errorf("recorder register fail: syslog")
 	}
@@ -257,7 +257,7 @@ func TestRefCounter(t *testing.T) {
 	go rec.Listen()
 	defer func() {
 		dc <- DbgMsg("rec1 defer")
-		rec.GetChannels().chCtl <- SignalStop
+		rec.GetChannels().ChCtl <- SignalStop
 	}()
 	logger1.RegisterRecorder("direct", rec.GetChannels())
 	logger2.RegisterRecorder("direct", rec.GetChannels())
@@ -305,7 +305,7 @@ func TestRefCounter(t *testing.T) {
 		go rec2.Listen()
 		defer func() {
 			dc <- DbgMsg("rec2 defer")
-			rec2.GetChannels().chCtl <- SignalStop
+			rec2.GetChannels().ChCtl <- SignalStop
 		}()
 		logger2.RegisterRecorder("direct-2", rec2.GetChannels())
 		t.Log("(logger 2 additional initialisation)")
@@ -364,9 +364,9 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// check writing with no refs on recorder //
-	rec.GetChannels().chMsg <- NewLogMsg().Setf("shouldn't be displayed") // TODO
+	rec.GetChannels().ChMsg <- NewLogMsg().Setf("shouldn't be displayed") // TODO
 	select {
-	case err, ok := <-rec.GetChannels().chErr:
+	case err, ok := <-rec.GetChannels().ChErr:
 		if !ok {
 			t.Errorf("FATAL: error-channel has been closed")
 			return
@@ -395,7 +395,7 @@ func TestSeverityOrder(t *testing.T) {
 		SetDbgChannel(dc)
 	go rec.Listen()
 	defer func() { runtime.Gosched() }()
-	defer func() { rec.GetChannels().chCtl <- SignalStop }()
+	defer func() { rec.GetChannels().ChCtl <- SignalStop }()
 	if err := logger.RegisterRecorder("direct", rec.GetChannels()); err != nil {
 		t.Errorf("recorder register fail: %s", err.Error())
 		return
@@ -469,7 +469,7 @@ func TestSeverityMask(t *testing.T) {
 	})
 	go rec.Listen()
 	//defer func() { runtime.Gosched() }()
-	defer func() { rec.GetChannels().chCtl <- SignalStop }()
+	defer func() { rec.GetChannels().ChCtl <- SignalStop }()
 	if err := logger.RegisterRecorder("direct", rec.GetChannels()); err != nil {
 		t.Errorf("recorder register fail: %s", err.Error())
 		return
