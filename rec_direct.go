@@ -6,16 +6,17 @@ import (
 	"math/rand"
 )
 
-type recorderSignal string
+type rqRecorderSignal string
 
 type ioDirectRecorder struct {
-	// We used two-way channels here (for convenience), so
-	// you should be careful at using it inside the recorder.
+	// We used two-way channels here, so you should
+	// be careful at using it inside the recorder.
 
-	chCtl chan ControlSignal  // receives a control signals
-	chMsg chan *LogMsg        // receives a log message
-	chErr chan error          // returns status feedback for some actions
-	chDbg chan<- debugMessage // used for debuging output if specified
+	chCtl     chan ControlSignal  // receives a control signals
+	chMsg     chan *LogMsg        // receives a log message
+	chErr     chan error          // returns a write errors
+	chDbg     chan<- debugMessage // used for debug output
+	chSyncErr chan error          // TMP
 
 	listening  bool
 	refCounter int
@@ -25,24 +26,14 @@ type ioDirectRecorder struct {
 	closer     func(interface{})
 }
 
-func (R *ioDirectRecorder) initChannels() {
-	R.chCtl = make(chan ControlSignal, 256)
-	R.chMsg = make(chan *LogMsg, 256)
-	R.chErr = make(chan error, 256)
-}
-
 // NewIoDirectRecorder allocates and returns a new io direct recorder.
 func NewIoDirectRecorder(
-	writer io.Writer, errChannel chan error, prefix ...string,
+	writer io.Writer, prefix ...string,
 ) *ioDirectRecorder {
 	r := new(ioDirectRecorder)
-	r.chCtl = make(chan ControlSignal, 256)
-	r.chMsg = make(chan *LogMsg, 256)
-	if errChannel != nil {
-		r.chErr = errChannel
-	} else {
-		r.chErr = DefErrChan
-	}
+	r.chCtl = make(chan ControlSignal, 32)
+	r.chMsg = make(chan *LogMsg, 64)
+	r.chSyncErr = make(chan error, 1)
 	r.format = IoDirectDefaultFormatter
 	r.writer = writer
 	r.refCounter = 0
@@ -52,13 +43,38 @@ func NewIoDirectRecorder(
 	return r
 }
 
-func (R *ioDirectRecorder) SetDbgChannel(ch chan<- debugMessage) *ioDirectRecorder {
-	R.chDbg = ch
-	return R
+func (R *ioDirectRecorder) GetChannels() ChanBundle {
+	return ChanBundle{R.chCtl, R.chMsg, R.chSyncErr}
 }
 
-func (R *ioDirectRecorder) GetChannels() ChanBundle {
-	return ChanBundle{R.chCtl, R.chMsg, R.chErr}
+// InitErrChan initialises and returns an error channel to report write errors.
+// If you use this function you must be sure, that some goroutine is reading the
+// channel. Otherwise, you must drop it by DropErrChan function.
+func (R *ioDirectRecorder) InitErrChan() <-chan error {
+	if R.chErr == nil {
+		R.chErr = make(chan error, 256)
+		return R.chErr
+	}
+	return nil
+}
+
+func (R *ioDirectRecorder) SetDbgChan(ch chan<- debugMessage) {
+	R.chDbg = ch
+}
+
+// DropErrChan closes error channel, the recorder will no more transmit write errors.
+func (R *ioDirectRecorder) DropErrChan() {
+	if R.chErr != nil {
+		close(R.chErr)
+		R.chErr = nil
+	}
+}
+
+func (R *ioDirectRecorder) DropDbgChan() {
+	if R.chDbg != nil {
+		close(R.chDbg)
+		R.chDbg = nil
+	}
 }
 
 var dbg_rand_buffer []int
@@ -87,7 +103,7 @@ get_rand:
 			case SignalInit:
 				R._log("r%d | RECV INIT SIGNAL", id)
 				R.initialise()
-				R.chErr <- nil // error ain't possible
+				R.chSyncErr <- nil // error ain't possible
 			case SignalClose:
 				R._log("r%d | RECV CLOSE SIGNAL", id)
 				R.close()
@@ -98,7 +114,7 @@ get_rand:
 				return
 			default:
 				R._log("r%d | RECV UNKNOWN SIGNAL", id)
-				R.chErr <- ErrUnknownSignal
+				//R.chErr <- ErrUnknownSignal
 				// unknown signal, skip
 			}
 		case msg := <-R.chMsg:
@@ -106,7 +122,9 @@ get_rand:
 			err := R.write(*msg)
 			if err != nil {
 				R._log("r%d | ERR: %s", id, err.Error())
-				R.chErr <- fmt.Errorf("[r%d] %s", id, err.Error()) // TODO
+				if R.chErr != nil {
+					R.chErr <- fmt.Errorf("[r%d] %s", id, err.Error())
+				}
 			}
 		}
 	}
@@ -143,12 +161,6 @@ func (R *ioDirectRecorder) FormatFunc(f FormatFunc) *ioDirectRecorder {
 func (R *ioDirectRecorder) OnClose(f func(interface{})) *ioDirectRecorder {
 	R.closer = f
 	return R
-}
-
-// DropDebugger sets debug channel to nil if it has been passed earlier.
-// It allows the recorder to continue normal work when debug listener stopped.
-func (R *ioDirectRecorder) DropDebugger() {
-	R.chDbg = nil
 }
 
 func (R *ioDirectRecorder) write(msg LogMsg) error {

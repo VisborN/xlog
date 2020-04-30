@@ -187,10 +187,6 @@ const (
 
 type FormatFunc func(*LogMsg) string
 
-// Default error channel for recorder's output.
-// Used if custom error channel isn't specified for the recorder.
-var DefErrChan chan error = make(chan error, 256)
-
 type logRecorder interface {
 	Listen()
 	GetChannels() ChanBundle
@@ -198,11 +194,11 @@ type logRecorder interface {
 
 type RecorderID string
 
-// CHanBundle structure represents recorder interface channels.
+// ChanBundle structure represents recorder interface channels.
 type ChanBundle struct {
-	ChCtl chan<- ControlSignal
-	ChMsg chan<- *LogMsg
-	ChErr <-chan error
+	ChCtl     chan<- ControlSignal
+	ChMsg     chan<- *LogMsg
+	ChSyncErr <-chan error
 }
 
 type Logger struct {
@@ -369,7 +365,7 @@ func (L *Logger) Initialise() error {
 			}
 			rec.ChCtl <- SignalInit
 			/// response on initialisation error ///
-			err := <-rec.ChErr
+			err := <-rec.ChSyncErr
 			if err != nil {
 				// ACTIONS...
 				br.Fail(id, err)

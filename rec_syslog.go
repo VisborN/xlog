@@ -8,10 +8,11 @@ import (
 var errWrongPriority = errors.New("wrong priority value")
 
 type syslogRecorder struct {
-	chCtl chan ControlSignal  // receives a control signals
-	chMsg chan *LogMsg        // receives a log message
-	chErr chan error          // returns status feedback for some actions
-	chDbg chan<- debugMessage // used for debuging output if specified
+	chCtl     chan ControlSignal  // receives a control signals
+	chMsg     chan *LogMsg        // receives a log message
+	chErr     chan error          // returns a write errors
+	chDbg     chan<- debugMessage // used for debug output
+	chSyncErr chan error          // TMP
 
 	listening  bool
 	refCounter int
@@ -24,15 +25,11 @@ type syslogRecorder struct {
 }
 
 // NewSyslogRecorder allocates and returns a new syslog recorder.
-func NewSyslogRecorder(errChannel chan error, prefix string) *syslogRecorder {
+func NewSyslogRecorder(prefix string) *syslogRecorder {
 	r := new(syslogRecorder)
-	r.chCtl = make(chan ControlSignal, 256)
+	r.chCtl = make(chan ControlSignal, 32)
 	r.chMsg = make(chan *LogMsg, 256)
-	if errChannel != nil {
-		r.chErr = errChannel
-	} else {
-		r.chErr = DefErrChan
-	}
+	r.chSyncErr = make(chan error, 1)
 	r.refCounter = 0
 	r.prefix = prefix
 	r.sevBindings = make(map[MsgFlagT]syslog.Priority)
@@ -53,13 +50,34 @@ func NewSyslogRecorder(errChannel chan error, prefix string) *syslogRecorder {
 	return r
 }
 
-func (R *syslogRecorder) SetDbgChannel(ch chan<- debugMessage) *syslogRecorder {
+func (R *syslogRecorder) InitErrChan() <-chan error {
+	if R.chErr == nil {
+		R.chErr = make(chan error, 256)
+		return R.chErr
+	}
+	return nil
+}
+
+func (R *syslogRecorder) SetDbgChan(ch chan<- debugMessage) {
 	R.chDbg = ch
-	return R
+}
+
+func (R *syslogRecorder) DropErrChan() {
+	if R.chErr != nil {
+		close(R.chErr)
+		R.chErr = nil
+	}
+}
+
+func (R *syslogRecorder) DropDbgChan() {
+	if R.chDbg != nil {
+		close(R.chDbg)
+		R.chDbg = nil
+	}
 }
 
 func (R *syslogRecorder) GetChannels() ChanBundle {
-	return ChanBundle{R.chCtl, R.chMsg, R.chErr}
+	return ChanBundle{R.chCtl, R.chMsg, R.chSyncErr}
 }
 
 func (R *syslogRecorder) Listen() {
@@ -77,7 +95,7 @@ func (R *syslogRecorder) Listen() {
 			case SignalInit:
 				R._log("RECV INIT SIGNAL")
 				e := R.initialise()
-				R.chErr <- e
+				R.chSyncErr <- e
 			case SignalClose:
 				R._log("RECV CLOSE SIGNAL")
 				R.close()
@@ -87,14 +105,16 @@ func (R *syslogRecorder) Listen() {
 				return
 			default:
 				R._log("RECV UNKNOWN SIGNAL")
-				R.chErr <- ErrUnknownSignal
+				//R.chErr <- ErrUnknownSignal
 			}
 		case msg := <-R.chMsg:
 			R._log("RECV MSG")
 			err := R.write(*msg)
 			if err != nil {
 				R._log("ERR: %s", err.Error())
-				R.chErr <- err
+				if R.chErr != nil {
+					R.chErr <- err
+				}
 			}
 		}
 	}

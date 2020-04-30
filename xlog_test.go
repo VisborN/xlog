@@ -11,6 +11,9 @@ import (
 // TODO: Fatal
 // TODO: Initialise() return check (BatchResult)
 
+// TODO: write err handler
+// TODO: SetDbgChan to queue
+
 var dc chan<- debugMessage
 
 func TestMain(m *testing.M) {
@@ -49,8 +52,8 @@ func ResetErrChan(chErr <-chan error) {
 func TestGeneral(t *testing.T) {
 	dc <- DbgMsg("--- TestGeneral()")
 	logger := NewLogger()
-	rec := NewIoDirectRecorder(os.Stdout, nil)
-	rec.SetDbgChannel(dc)
+	rec := NewIoDirectRecorder(os.Stdout)
+	rec.SetDbgChan(dc)
 	bundle := rec.GetChannels()
 	t.Log("register recorder...")
 	if err := logger.RegisterRecorder("direct", bundle); err != nil {
@@ -103,8 +106,8 @@ func TestGeneral(t *testing.T) {
 func TestSyslogRecorder(t *testing.T) {
 	dc <- DbgMsg("--- TestSyslogRecorder()")
 	logger := NewLogger()
-	rec := NewSyslogRecorder(nil, "XLOG")
-	rec.SetDbgChannel(dc)
+	rec := NewSyslogRecorder("XLOG")
+	rec.SetDbgChan(dc)
 	go rec.Listen()
 	defer func() { runtime.Gosched() }()
 	defer func() { rec.GetChannels().ChCtl <- SignalStop }()
@@ -112,11 +115,15 @@ func TestSyslogRecorder(t *testing.T) {
 		t.Errorf("recorder register fail: syslog")
 	}
 	t.Log("initialising logger...")
+	//fmt.Print("initialising logger...\n")
+	//dc <- DbgMsg("initialising logger...")
 	if err := logger.Initialise(); err != nil {
 		t.Errorf("%s", err.Error())
 		return
 	} else {
 		t.Log("OK")
+		//fmt.Print("done.\n")
+		//dc <- DbgMsg("done.")
 		defer logger.Close()
 	}
 	t.Log("sending message...")
@@ -251,8 +258,8 @@ func TestRefCounter(t *testing.T) {
 
 	logger1 := NewLogger()
 	logger2 := NewLogger()
-	rec := NewIoDirectRecorder(os.Stdout, nil)
-	rec.SetDbgChannel(dc)
+	rec := NewIoDirectRecorder(os.Stdout)
+	rec.SetDbgChan(dc)
 	defer func() { runtime.Gosched() }()
 	go rec.Listen()
 	defer func() {
@@ -300,8 +307,8 @@ func TestRefCounter(t *testing.T) {
 	// ----------------------------------------
 
 	{ // for additional checks
-		rec2 := NewIoDirectRecorder(os.Stdout, nil)
-		rec2.SetDbgChannel(dc)
+		rec2 := NewIoDirectRecorder(os.Stdout)
+		rec2.SetDbgChan(dc)
 		go rec2.Listen()
 		defer func() {
 			dc <- DbgMsg("rec2 defer")
@@ -364,25 +371,26 @@ func TestRefCounter(t *testing.T) {
 	}
 
 	// check writing with no refs on recorder //
-	rec.GetChannels().ChMsg <- NewLogMsg().Setf("shouldn't be displayed") // TODO
-	select {
-	case err, ok := <-rec.GetChannels().ChErr:
-		if !ok {
-			t.Errorf("FATAL: error-channel has been closed")
-			return
+	/*
+		rec.GetChannels().ChMsg <- NewLogMsg().Setf("shouldn't be displayed") // TODO
+		select {
+		case err, ok := <-rec.GetChannels().ChErr:
+			if !ok {
+				t.Errorf("FATAL: error-channel has been closed")
+				return
+			}
+			t.Logf("OK\nerr: %s", err.Error())
+		default:
+			//t.Errorf("FAIL: no messages in error-channel")
+			t.Log("SHADOW-FAIL: no messages in error-channel <NOT IMPLEMENTED YET>")
 		}
-		t.Logf("OK\nerr: %s", err.Error())
-	default:
-		//t.Errorf("FAIL: no messages in error-channel")
-		t.Log("SHADOW-FAIL: no messages in error-channel <NOT IMPLEMENTED YET>")
-	}
+	*/
 }
 
 // =======================================================================
 
 func TestSeverityOrder(t *testing.T) {
 	dc <- DbgMsg("--- TestSeverityOrder()")
-	ResetErrChan(DefErrChan)
 
 	logger := NewLogger()
 	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
@@ -390,9 +398,9 @@ func TestSeverityOrder(t *testing.T) {
 		t.Errorf("file open fail: %s", err.Error())
 		return
 	}
-	rec := NewIoDirectRecorder(logFile, nil).
-		OnClose(func(interface{}) { logFile.Close() }).
-		SetDbgChannel(dc)
+	rec := NewIoDirectRecorder(logFile).
+		OnClose(func(interface{}) { logFile.Close() })
+	rec.SetDbgChan(dc)
 	go rec.Listen()
 	defer func() { runtime.Gosched() }()
 	defer func() { rec.GetChannels().ChCtl <- SignalStop }()
@@ -464,9 +472,10 @@ func TestSeverityMask(t *testing.T) {
 		t.Errorf("file open fail: %s", err.Error())
 		return
 	}
-	rec := NewIoDirectRecorder(logFile, nil).SetDbgChannel(dc).OnClose(func(interface{}) {
+	rec := NewIoDirectRecorder(logFile).OnClose(func(interface{}) {
 		logFile.Close()
 	})
+	rec.SetDbgChan(dc)
 	go rec.Listen()
 	//defer func() { runtime.Gosched() }()
 	defer func() { rec.GetChannels().ChCtl <- SignalStop }()
