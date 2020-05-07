@@ -5,18 +5,9 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 )
-
-// TODO: (451) err return system
-// TODO: writing with no refs
-
-// TODO: glob rec list
-// TODO: prevent writing w/o refs
-// TODO: closer function behaviour
-// TODO: nil.Func(): check out returns
-// TODO: start/stop listener after/before ctl message (+defer)
-// go rec.Listen() call. DO SOMETHING
 
 /*  xlog message flags
 
@@ -31,6 +22,8 @@ custom flags bits:
     xx-- : attributes
 
 */
+
+var GlobalDisable bool = false
 
 type MsgFlagT uint16
 
@@ -197,11 +190,13 @@ type RecorderID string
 // ChanBundle structure represents recorder interface channels.
 type ChanBundle struct {
 	ChCtl     chan<- ControlSignal
-	ChMsg     chan<- *LogMsg
+	ChMsg     chan<- LogMsg
 	ChSyncErr <-chan error
 }
 
 type Logger struct {
+	sync.Mutex
+
 	initialised bool
 	// We must sure that functions init/close doesn't call successively.
 	// Otherwise we can have problems with reference counters calculations.
@@ -247,6 +242,13 @@ func (L *Logger) RegisterRecorder(id RecorderID, channels ChanBundle) error {
 func (L *Logger) RegisterRecorderEx(id RecorderID, intrf ChanBundle, asDefault bool) error {
 	// This function should configure all related fields. Other functions
 	// will return an error or cause panic if they meet a wrong logger data.
+
+	if GlobalDisable {
+		return nil
+	}
+
+	L.Lock()
+	defer L.Unlock()
 
 	if L.recorders == nil {
 		// We should provide Logger as exported type. So, these checks
@@ -302,6 +304,9 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, intrf ChanBundle, asDefault b
 }
 
 func (L *Logger) UnregisterRecorder(id RecorderID) error {
+	if GlobalDisable {
+		return nil
+	}
 	if len(L.recorders) == 0 {
 		return ErrNoRecorders
 	}
@@ -322,6 +327,8 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 		}
 	}
 
+	L.Lock()
+
 	// remove from defaults
 	for i, recID := range L.defaults {
 		if recID == id {
@@ -341,11 +348,16 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 	delete(L.severityMasks, id)
 	delete(L.severityOrder, id)
 
+	L.Unlock()
+
 	return nil
 }
 
 // Initialise invokes initialisation functions of each registered recorder.
 func (L *Logger) Initialise() error {
+	if GlobalDisable {
+		return nil
+	}
 	if L.initialised {
 		return nil
 	}
@@ -355,6 +367,9 @@ func (L *Logger) Initialise() error {
 	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
 		return internalError(ieCritical, "bumped to nil")
 	}
+
+	L.Lock()
+	defer L.Unlock()
 
 	br := BatchResult{}
 	br.SetMsg("some of the given recorders are not initialised")
@@ -401,14 +416,22 @@ func (L *Logger) Close() {
 	for _, rec := range L.recorders {
 		rec.ChCtl <- SignalClose
 	}
+	L.Lock()
 	L.initialised = false
+	L.Unlock()
 }
 
 // AddToDefaults sets given recorders as default for that logger.
 func (L *Logger) AddToDefaults(recorders []RecorderID) error {
+	if GlobalDisable {
+		return nil
+	}
 	if len(L.recorders) == 0 {
 		return ErrNoRecorders
 	}
+
+	L.Lock()
+	defer L.Unlock()
 
 	// check registered recorders
 	br := BatchResult{}
@@ -444,9 +467,15 @@ main_iter:
 
 // RemoveFromDefaults removes given recorders form defaults in that logger.
 func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
+	if GlobalDisable {
+		return nil
+	}
 	if len(L.recorders) == 0 {
 		return ErrNoRecorders
 	}
+
+	L.Lock()
+	defer L.Unlock()
 
 	// check registered recorders
 	br := BatchResult{}
@@ -489,6 +518,9 @@ func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
 func (L *Logger) ChangeSeverityOrder(
 	recorder RecorderID, srcFlag MsgFlagT, dir ssDirection, trgFlag MsgFlagT,
 ) error {
+	if GlobalDisable {
+		return nil
+	}
 
 	if len(L.recorders) == 0 {
 		return ErrNoRecorders
@@ -548,6 +580,8 @@ func (L *Logger) ChangeSeverityOrder(
 			"can't find trg flag (%012b)", trgFlag)
 	}
 
+	L.Lock()
+
 	// change order
 	if dir == Before {
 		L.severityOrder[recorder].MoveBefore(src, trg)
@@ -555,11 +589,15 @@ func (L *Logger) ChangeSeverityOrder(
 		L.severityOrder[recorder].MoveAfter(src, trg)
 	}
 
+	L.Unlock()
 	return nil
 }
 
 // SetSeverityMask sets which severities allowed for the given recorder in this logger.
 func (L *Logger) SetSeverityMask(recorder RecorderID, flags MsgFlagT) error {
+	if GlobalDisable {
+		return nil
+	}
 	if L.severityMasks == nil {
 		return internalError(ieCritical, "bumped to nil")
 	}
@@ -576,8 +614,12 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags MsgFlagT) error {
 		}
 		_ = sevMask // THAT'S COMPLETELY STUPID, GOLANG
 	} else {
+		L.Lock()
+
 		// zero is allowed (recorder blocked)
 		L.severityMasks[recorder] = flags &^ SeverityShadowMask
+
+		L.Unlock()
 	}
 
 	return nil
@@ -589,16 +631,25 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags MsgFlagT) error {
 //
 // Returns nil in case of success otherwise returns an error.
 func (L *Logger) Write(flags MsgFlagT, msgFmt string, msgArgs ...interface{}) error {
+	if GlobalDisable {
+		return nil
+	}
 	msg := NewLogMsg().SetFlags(flags)
 	msg.Setf(msgFmt, msgArgs...)
 	return L.WriteMsg(nil, msg)
 }
 
+// {Logger}: only read access
+//
 // WriteMsg send write signal with given message to the specified recorders.
 // If custom recorders are not specified, uses default recorders of this logger.
 //
 // Returns nil on success and error on fail.
 func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
+	if GlobalDisable {
+		return nil
+	}
+
 	if !L.initialised {
 		return ErrNotInitialised
 	}
@@ -677,7 +728,7 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 			if ((*msg).flags&^SeverityShadowMask)&sevMask > 0 { // severity filter
 				rec := L.recorders[recID] // recorder id is valid, already checked
 
-				rec.ChMsg <- msg
+				rec.ChMsg <- *msg
 				br.OK(recID)
 				// NO ERROR CHECK
 			}

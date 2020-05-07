@@ -8,12 +8,6 @@ import (
 	"time"
 )
 
-// TODO: Fatal
-// TODO: Initialise() return check (BatchResult)
-
-// TODO: write err handler
-// TODO: SetDbgChan to queue
-
 var dc chan<- debugMessage
 
 func TestMain(m *testing.M) {
@@ -29,8 +23,7 @@ func TestMain(m *testing.M) {
 	r := m.Run()
 
 	time.Sleep(time.Millisecond)
-	close(d.Chan())
-	runtime.Gosched()
+	//d.Close()
 	dbgFile.Close()
 	os.Exit(r)
 }
@@ -70,10 +63,12 @@ func TestGeneral(t *testing.T) {
 	//defer func() { rec.GetChannels().ChCtl <- SignalStop }()
 	dc <- DbgMsg("goshed")
 	runtime.Gosched()
-	if !rec.IsListening() {
-		t.Errorf("CRITICAL: recorder isn't listening")
-		return
-	}
+	/*
+		if !rec.listening {
+			t.Errorf("CRITICAL: recorder isn't listening")
+			return
+		}
+	*/
 	t.Log("initialising logger...")
 	if err := logger.Initialise(); err != nil {
 		t.Errorf("%s", err.Error())
@@ -96,11 +91,13 @@ func TestGeneral(t *testing.T) {
 	func() { rec.GetChannels().ChCtl <- SignalStop }()
 	time.Sleep(time.Second) // to allow VM switch stream
 	t.Log("stop signal check...")
-	if rec.IsListening() {
-		t.Errorf("recorder listener still alive")
-	} else {
-		t.Log("OK")
-	}
+	/*
+		if rec.listening {
+			t.Errorf("recorder listener still alive")
+		} else {
+			t.Log("OK")
+		}
+	*/
 }
 
 func TestSyslogRecorder(t *testing.T) {
@@ -328,6 +325,7 @@ func TestRefCounter(t *testing.T) {
 	}
 	dc <- DbgMsg("goshed")
 	runtime.Gosched()
+	// >>>>> RACE CONDITION <<<<<
 	if !testFunc(rec.refCounter, 1) {
 		t.Logf("<debug data>\nrecorder: %v\nlogger: %v", rec, logger1)
 	} else {
@@ -352,7 +350,11 @@ func TestRefCounter(t *testing.T) {
 		return
 	}
 	dc <- DbgMsg("goshed")
-	runtime.Gosched()
+	{
+		//runtime.Gosched()
+		time.Sleep(time.Second)
+	}
+	// >>>>> RACE CONDITION <<<<<
 	if !testFunc(rec.refCounter, 0) {
 		t.Logf("recorder: %v", rec)
 	} else {
@@ -408,8 +410,10 @@ func TestSeverityOrder(t *testing.T) {
 		t.Errorf("recorder register fail: %s", err.Error())
 		return
 	}
+	/* RACE CONDITION
 	dc <- DbgMsg("logger: %v", logger)
 	dc <- DbgMsg("recorder: %v", rec)
+	*/
 	if err := logger.Initialise(); err != nil {
 		if br, ok := err.(BatchResult); ok {
 			msg := br.Error()
@@ -567,7 +571,7 @@ var t_errManualInvoked = fmt.Errorf("manual invoked error")
 
 type t_debugRecorder struct {
 	chCtl chan ControlSignal
-	chMsg chan *LogMsg
+	chMsg chan LogMsg
 	chErr chan error
 
 	initialised  bool
@@ -581,7 +585,7 @@ type t_debugRecorder struct {
 func t_newDebugRecorder(iid string, outp *string) *t_debugRecorder {
 	r := new(t_debugRecorder)
 	r.chCtl = make(chan ControlSignal, 5)
-	r.chMsg = make(chan *LogMsg, 5)
+	r.chMsg = make(chan LogMsg, 5)
 	r.chErr = make(chan error)
 	r.DbgOutput = outp
 	r.iid = iid
@@ -614,7 +618,7 @@ func (R *t_debugRecorder) Listen() {
 				}
 			}
 		case msg := <-R.chMsg:
-			err := R.write(*msg)
+			err := R.write(msg)
 			R.chErr <- err
 		}
 	}

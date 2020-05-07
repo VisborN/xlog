@@ -9,7 +9,7 @@ var errWrongPriority = errors.New("wrong priority value")
 
 type syslogRecorder struct {
 	chCtl     chan ControlSignal  // receives a control signals
-	chMsg     chan *LogMsg        // receives a log message
+	chMsg     chan LogMsg         // receives a log message
 	chErr     chan error          // returns a write errors
 	chDbg     chan<- debugMessage // used for debug output
 	chSyncErr chan error          // TMP
@@ -28,7 +28,7 @@ type syslogRecorder struct {
 func NewSyslogRecorder(prefix string) *syslogRecorder {
 	r := new(syslogRecorder)
 	r.chCtl = make(chan ControlSignal, 32)
-	r.chMsg = make(chan *LogMsg, 256)
+	r.chMsg = make(chan LogMsg, 256)
 	r.chSyncErr = make(chan error, 1)
 	r.refCounter = 0
 	r.prefix = prefix
@@ -109,7 +109,7 @@ func (R *syslogRecorder) Listen() {
 			}
 		case msg := <-R.chMsg:
 			R._log("RECV MSG")
-			err := R.write(*msg)
+			err := R.write(msg)
 			if err != nil {
 				R._log("ERR: %s", err.Error())
 				if R.chErr != nil {

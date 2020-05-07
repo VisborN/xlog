@@ -15,6 +15,7 @@ package xlog
 import (
 	"fmt"
 	"io"
+	"sync"
 	"time"
 )
 
@@ -31,6 +32,7 @@ func DbgMsg(format string, args ...interface{}) debugMessage {
 }
 
 type debugLogger struct {
+	sync.Mutex
 	listening bool
 	channel   chan debugMessage
 	writer    io.Writer
@@ -44,6 +46,13 @@ func NewDebugLogger(writer io.Writer) *debugLogger {
 	d.writer = writer
 	d.channel = make(chan debugMessage, 10)
 	return d
+}
+
+func (D *debugLogger) Close() {
+	D.Lock()
+	close(D.channel)
+	D.channel = nil
+	D.Unlock()
 }
 
 func (D *debugLogger) Listen() {
@@ -67,6 +76,10 @@ func (D *debugLogger) Listen() {
 	D.listening = false
 	fmt.Print(".....XLOG DEBUG LISTENER STOPPED.....\n")
 	fmt.Printf("event time: %s\n", time.Now().Format("15:04:05.000000000"))
+}
+
+func (D *debugLogger) Write() {
+	//
 }
 
 func (D *debugLogger) Chan() chan<- debugMessage {

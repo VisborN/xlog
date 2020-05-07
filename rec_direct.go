@@ -13,7 +13,7 @@ type ioDirectRecorder struct {
 	// be careful at using it inside the recorder.
 
 	chCtl     chan ControlSignal  // receives a control signals
-	chMsg     chan *LogMsg        // receives a log message
+	chMsg     chan LogMsg         // receives a log message
 	chErr     chan error          // returns a write errors
 	chDbg     chan<- debugMessage // used for debug output
 	chSyncErr chan error          // TMP
@@ -32,7 +32,7 @@ func NewIoDirectRecorder(
 ) *ioDirectRecorder {
 	r := new(ioDirectRecorder)
 	r.chCtl = make(chan ControlSignal, 32)
-	r.chMsg = make(chan *LogMsg, 64)
+	r.chMsg = make(chan LogMsg, 64)
 	r.chSyncErr = make(chan error, 1)
 	r.format = IoDirectDefaultFormatter
 	r.writer = writer
@@ -119,7 +119,7 @@ get_rand:
 			}
 		case msg := <-R.chMsg:
 			R._log("r%d | RECV MSG", id)
-			err := R.write(*msg)
+			err := R.write(msg)
 			if err != nil {
 				R._log("r%d | ERR: %s", id, err.Error())
 				if R.chErr != nil {
@@ -130,9 +130,11 @@ get_rand:
 	}
 }
 
+/*
 func (R *ioDirectRecorder) IsListening() bool {
 	return R.listening
 }
+*/
 
 func (R *ioDirectRecorder) initialise() {
 	R.refCounter++
