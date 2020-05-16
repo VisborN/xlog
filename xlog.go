@@ -3,6 +3,7 @@ package xlog
 import (
 	"container/list"
 	"fmt"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -416,6 +417,10 @@ func (L *Logger) Close() {
 	for _, rec := range L.recorders {
 		rec.ChCtl <- SignalClose
 	}
+
+	// {src: t2u-race-2be43}
+	runtime.Gosched() // wait other WriteMsg operations
+
 	L.Lock()
 	L.initialised = false
 	L.Unlock()
