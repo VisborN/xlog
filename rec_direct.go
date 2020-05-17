@@ -12,11 +12,10 @@ import (
 type rqRecorderSignal string
 
 type ioDirectRecorder struct {
-	chCtl     chan ControlSignal  // receives a control signals
-	chMsg     chan LogMsg         // receives a log message
-	chErr     chan error          // returns a write errors
-	chDbg     chan<- debugMessage // used for debug output
-	chSyncErr chan error          // TMP
+	chCtl chan ControlSignal
+	chMsg chan LogMsg
+	chErr chan<- error        // optional
+	chDbg chan<- debugMessage // optional
 
 	id          xid.ID
 	isListening bool_s // internal mutex
@@ -37,52 +36,28 @@ func NewIoDirectRecorder(
 	r.id = xid.NewWithTime(time.Now())
 	r.chCtl = make(chan ControlSignal, 32)
 	r.chMsg = make(chan LogMsg, 64)
-	r.chSyncErr = make(chan error, 1)
 	r.format = IoDirectDefaultFormatter
 	r.writer = writer
-	r.refCounter = 0
 	if len(prefix) > 0 {
 		r.prefix = prefix[0]
 	}
 	return r
 }
 
+/* DEPRECATED
 func (R *ioDirectRecorder) GetChannels() ChanBundle {
 	return ChanBundle{R.chCtl, R.chMsg, R.chSyncErr}
 }
+*/
 
-func (R *ioDirectRecorder) GetID() xid.ID {
+// Intrf returns recorder's interface channels.
+func (R *ioDirectRecorder) Intrf() RecorderInterface {
+	return RecorderInterface{R.chCtl, R.chMsg}
+}
+
+// getID returns recorder's xid.
+func (R *ioDirectRecorder) getID() xid.ID {
 	return R.id
-}
-
-// InitErrChan initialises and returns an error channel to report write errors.
-// If you use this function you must be sure, that some goroutine is reading the
-// channel. Otherwise, you must drop it by DropErrChan function.
-func (R *ioDirectRecorder) InitErrChan() <-chan error {
-	if R.chErr == nil {
-		R.chErr = make(chan error, 256)
-		return R.chErr
-	}
-	return nil
-}
-
-func (R *ioDirectRecorder) SetDbgChan(ch chan<- debugMessage) {
-	R.chDbg = ch
-}
-
-// DropErrChan closes error channel, the recorder will no more transmit write errors.
-func (R *ioDirectRecorder) DropErrChan() {
-	if R.chErr != nil {
-		close(R.chErr)
-		R.chErr = nil
-	}
-}
-
-func (R *ioDirectRecorder) DropDbgChan() {
-	if R.chDbg != nil {
-		close(R.chDbg)
-		R.chDbg = nil
-	}
 }
 
 // FormatFunc sets custom formatter function for this recorder.
@@ -114,40 +89,59 @@ func (R *ioDirectRecorder) Listen() {
 		return
 	} else {
 		R.isListening.Set(true)
+		R._log("start listener...")
 	}
-
-	R._log("start recorder listener, id=%d", R.id)
 
 	for {
 		select {
-		case msg := <-R.chCtl:
-			switch msg {
-			case SignalInit:
-				R._log("r%d | RECV INIT SIGNAL", R.id)
+		case sig := <-R.chCtl: // recv control signal
+			switch sig.Type {
+			case SigInit:
+				R._log("RECV INIT SIGNAL")
+				respErrChan := sig.Data.(chan error) // MAY PANIC
+				R._log("  chan: %v", respErrChan)
 				R.initialise()
-				R.chSyncErr <- nil // error ain't possible
-			case SignalClose:
-				R._log("r%d | RECV CLOSE SIGNAL", R.id)
+				R._log("  send response..")
+				respErrChan <- nil // error ain't possible
+				R._log("  done")
+			case SigClose:
+				R._log("RECV CLOSE SIGNAL")
 				R.RLock()
 				R.close()
 				R.RUnlock()
-				//R._log("r%d | .refCounter=%d", id, R.refCounter)
-			case SignalStop: // TODO
-				R._log("r%d | RECV STOP SIGNAL", R.id)
+			case SigStop:
+				R._log("RECV STOP SIGNAL")
 				R.isListening.Set(false)
+				R._log("stop listener...")
 				return
+
+			case SigSetErrChan:
+				R._log("RECV SET_ERR_CHAN SIGNAL")
+				R.chErr = sig.Data.(chan error) // MAY PANIC
+			case SigSetDbgChan:
+				R._log("RECV SET_DBG_CHAN SIGNAL")
+				R.chDbg = sig.Data.(chan debugMessage) // MAY PANIC
+			case SigDropErrChan:
+				R._log("RECV DROP_ERR_CHAN SIGNAL")
+				//close(R.chErr)
+				R.chErr = nil
+			case SigDropDbgChan:
+				R._log("RECV DROP_DBG_CHAN SIGNAL")
+				//close(R.chDbg)
+				R.chDbg = nil
+
 			default:
-				R._log("r%d | RECV UNKNOWN SIGNAL", R.id)
-				//R.chErr <- ErrUnknownSignal
-				// unknown signal, skip
+				R._log("ERROR: received unknown signal (%s)", sig.Type)
+				panic("xlog: received unknown signal")
 			}
-		case msg := <-R.chMsg:
-			R._log("r%d | RECV MSG", R.id)
+
+		case msg := <-R.chMsg: // write log message
+			R._log("RECV MSG SIGNAL <--\n  msg=%v", msg)
 			err := R.write(msg)
 			if err != nil {
-				R._log("r%d | ERR: %s", R.id, err.Error())
+				R._log("write error: %s", err.Error())
 				if R.chErr != nil {
-					R.chErr <- fmt.Errorf("[r%d] %s", R.id, err.Error())
+					R.chErr <- err
 				}
 			}
 		}
@@ -196,14 +190,18 @@ func (R *ioDirectRecorder) write(msg LogMsg) error {
 		msgData += "\n"
 	}
 	if _, err := R.writer.Write([]byte(msgData)); err != nil {
-		return fmt.Errorf("writer error: %s", err.Error())
+		return fmt.Errorf("writer fail: %s", err.Error())
 	}
 	return nil
 }
 
 func (R *ioDirectRecorder) _log(format string, args ...interface{}) {
 	if R.chDbg != nil {
-		msg := DbgMsg(format, args...)
+
+		// TODO
+
+		fmt := fmt.Sprintf("[%s] %s", R.id.String(), format)
+		msg := DbgMsg(fmt, args...)
 		R.chDbg <- msg
 	}
 }

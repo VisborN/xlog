@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/xid"
 )
 
 /*  xlog message flags
@@ -22,25 +24,6 @@ custom flags bits:
     xx-- : attributes
 
 */
-
-type bool_s struct {
-	sync.RWMutex
-	v bool
-}
-
-func (m *bool_s) Set(value bool) {
-	m.Lock()
-	defer m.Unlock()
-	m.v = value
-}
-
-func (m *bool_s) Get() bool {
-	m.RLock()
-	defer m.RUnlock()
-	return m.v
-}
-
-var CfgGlobalDisable bool_s = bool_s{v: false}
 
 type MsgFlagT uint16
 
@@ -127,6 +110,27 @@ type ssDirection bool
 const Before ssDirection = true
 const After ssDirection = false
 
+// ---------------------------------------- CONFIG
+
+type bool_s struct {
+	sync.RWMutex
+	v bool
+}
+
+func (m *bool_s) Set(value bool) {
+	m.Lock()
+	defer m.Unlock()
+	m.v = value
+}
+
+func (m *bool_s) Get() bool {
+	m.RLock()
+	defer m.RUnlock()
+	return m.v
+}
+
+var CfgGlobalDisable bool_s = bool_s{v: false}
+
 // -----------------------------------------------------------------------------
 
 type LogMsg struct {
@@ -187,41 +191,51 @@ func (LM *LogMsg) GetContent() string { return LM.content }
 
 // -----------------------------------------------------------------------------
 
-type ControlSignal string
+type SignalType string
+
+type ControlSignal struct {
+	Type SignalType
+	Data interface{}
+}
 
 const (
-	SignalInit  ControlSignal = "SIG_INIT"
-	SignalClose ControlSignal = "SIG_CLOSE"
-	SignalStop  ControlSignal = "SIG_STOP"
+	SigInit  SignalType = "SIG_INIT"
+	SigClose SignalType = "SIG_CLOSE"
+	SigStop  SignalType = "SIG_STOP"
+
+	SigSetErrChan  SignalType = "SIG_SET_ERR"
+	SigSetDbgChan  SignalType = "SIG_SET_DBG"
+	SigDropErrChan SignalType = "SIG_DROP_ERR"
+	SigDropDbgChan SignalType = "SIG_GROP_DBG"
 )
 
 type FormatFunc func(*LogMsg) string
 
 type logRecorder interface {
 	Listen()
-	GetChannels() ChanBundle
+	IsListening() bool
+	Intrf() RecorderInterface
+	getID() xid.ID
+}
+
+// RecorderInterface structure represents recorder interface channels.
+type RecorderInterface struct {
+	ChCtl chan<- ControlSignal
+	ChMsg chan<- LogMsg
 }
 
 type RecorderID string
 
-// ChanBundle structure represents recorder interface channels.
-type ChanBundle struct {
-	ChCtl     chan<- ControlSignal
-	ChMsg     chan<- LogMsg
-	ChSyncErr <-chan error
-}
-
 type Logger struct {
 	sync.RWMutex
 
-	initialised bool
+	initialised bool // true only if all recorders have been initialised
 	// We must sure that functions init/close doesn't call successively.
 	// Otherwise we can have problems with reference counters calculations.
 
-	recorders map[RecorderID]ChanBundle
-
-	// describes initialisation status of each recorder
-	recordersState map[RecorderID]bool
+	recorders     map[RecorderID]RecorderInterface
+	recordersInit map[RecorderID]bool
+	//recordersXID  map[RecorderID]xid.ID
 
 	defaults []RecorderID // list of default recorders
 	// Default recorders used for writing by default
@@ -237,8 +251,8 @@ type Logger struct {
 // NewLogger allocates and returns a new logger.
 func NewLogger() *Logger {
 	l := new(Logger)
-	l.recorders = make(map[RecorderID]ChanBundle)
-	l.recordersState = make(map[RecorderID]bool)
+	l.recorders = make(map[RecorderID]RecorderInterface)
+	l.recordersInit = make(map[RecorderID]bool)
 	l.severityMasks = make(map[RecorderID]MsgFlagT)
 	l.severityOrder = make(map[RecorderID]*list.List)
 	return l
@@ -251,13 +265,13 @@ func (L *Logger) NumberOfRecorders() int {
 }
 
 // The same as RegisterRecorderEx, but adds recorder to defaults anyways.
-func (L *Logger) RegisterRecorder(id RecorderID, intrf ChanBundle) error {
+func (L *Logger) RegisterRecorder(id RecorderID, intrf RecorderInterface) error {
 	return L.RegisterRecorderEx(id, intrf, true)
 }
 
 // RegisterRecorder registers the recorder in the logger with the given id.
 // asDefault parameter says whether the need to set it as default recorder.
-func (L *Logger) RegisterRecorderEx(id RecorderID, intrf ChanBundle, asDefault bool) error {
+func (L *Logger) RegisterRecorderEx(id RecorderID, intrf RecorderInterface, asDefault bool) error {
 	// This function should configure all related fields. Other functions
 	// will return an error or cause panic if they meet a wrong logger data.
 
@@ -271,7 +285,7 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, intrf ChanBundle, asDefault b
 	if L.recorders == nil {
 		// We should provide Logger as exported type. So, these checks
 		// are necessary in case if object was created w/o New Logger()
-		L.recorders = make(map[RecorderID]ChanBundle)
+		L.recorders = make(map[RecorderID]RecorderInterface)
 	} else {
 		for recID, _ := range L.recorders {
 			if recID == id {
@@ -282,10 +296,10 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, intrf ChanBundle, asDefault b
 	L.recorders[id] = intrf
 
 	// setup initialisation state
-	if L.recordersState == nil {
-		L.recordersState = make(map[RecorderID]bool)
+	if L.recordersInit == nil {
+		L.recordersInit = make(map[RecorderID]bool)
 	}
-	L.recordersState[id] = false
+	L.recordersInit[id] = false
 
 	// setup default severity mask
 	if L.severityMasks == nil {
@@ -330,7 +344,7 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 	if len(L.recorders) == 0 {
 		return ErrNoRecorders
 	}
-	if L.recordersState == nil {
+	if L.recordersInit == nil {
 		return internalError(ieCritical, "bumped to nil")
 	}
 
@@ -338,11 +352,11 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 	if rc, exist := L.recorders[id]; !exist {
 		return ErrWrongRecorderID
 	} else {
-		if initialised, exist := L.recordersState[id]; !exist {
+		if initialised, exist := L.recordersInit[id]; !exist {
 			return internalError(ieUnreachable, ".recordersState: missing valid id")
 		} else {
 			if initialised {
-				rc.ChCtl <- SignalClose
+				rc.ChCtl <- ControlSignal{SigClose, nil}
 			}
 		}
 	}
@@ -365,7 +379,7 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 	}
 
 	delete(L.recorders, id)
-	delete(L.recordersState, id)
+	delete(L.recordersInit, id)
 	delete(L.severityMasks, id)
 	delete(L.severityOrder, id)
 
@@ -395,18 +409,18 @@ func (L *Logger) Initialise() error {
 	br := BatchResult{}
 	br.SetMsg("some of the given recorders are not initialised")
 	for id, rec := range L.recorders {
-		if initialised, exist := L.recordersState[id]; exist {
+		if initialised, exist := L.recordersInit[id]; exist {
 			if initialised {
 				continue
 			}
-			rec.ChCtl <- SignalInit
-			/// response on initialisation error ///
-			err := <-rec.ChSyncErr
+			chErr := make(chan error)
+			rec.ChCtl <- ControlSignal{SigInit, chErr}
+			err := <-chErr
 			if err != nil {
 				// ACTIONS...
 				br.Fail(id, err)
 			} else {
-				L.recordersState[id] = true
+				L.recordersInit[id] = true
 				br.OK(id)
 			}
 		} else {
@@ -416,11 +430,11 @@ func (L *Logger) Initialise() error {
 		}
 	}
 
-	/*** LOGIC AT PARTIAL INITIALISATION ***/
+	//=== LOGIC AT PARTIAL INITIALISATION ===//
 	if br.Errors() != nil {
+		// all recorders should be initialised for success state
 		return br
 	} else {
-		// all recorders should be initialised for success state
 		L.initialised = true
 		return nil
 	}
@@ -438,7 +452,7 @@ func (L *Logger) Close() {
 		return
 	}
 	for _, rec := range L.recorders {
-		rec.ChCtl <- SignalClose
+		rec.ChCtl <- ControlSignal{SigClose, nil}
 	}
 
 	L.initialised = false

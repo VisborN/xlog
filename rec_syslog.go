@@ -2,19 +2,23 @@ package xlog
 
 import (
 	"errors"
+	"fmt"
 	"log/syslog"
 	"sync"
+	"time"
+
+	"github.com/rs/xid"
 )
 
 var errWrongPriority = errors.New("wrong priority value")
 
 type syslogRecorder struct {
-	chCtl     chan ControlSignal  // receives a control signals
-	chMsg     chan LogMsg         // receives a log message
-	chErr     chan error          // returns a write errors
-	chDbg     chan<- debugMessage // used for debug output
-	chSyncErr chan error          // TMP
+	chCtl chan ControlSignal
+	chMsg chan LogMsg
+	chErr chan<- error
+	chDbg chan<- debugMessage
 
+	id          xid.ID
 	isListening bool_s // internal mutex
 	refCounter  int
 	prefix      string // can't be changeable
@@ -30,10 +34,9 @@ type syslogRecorder struct {
 // NewSyslogRecorder allocates and returns a new syslog recorder.
 func NewSyslogRecorder(prefix string) *syslogRecorder {
 	r := new(syslogRecorder)
+	r.id = xid.NewWithTime(time.Now())
 	r.chCtl = make(chan ControlSignal, 32)
-	r.chMsg = make(chan LogMsg, 256)
-	r.chSyncErr = make(chan error, 1)
-	r.refCounter = 0
+	r.chMsg = make(chan LogMsg, 64)
 	r.prefix = prefix
 	r.sevBindings = make(map[MsgFlagT]syslog.Priority)
 
@@ -53,34 +56,20 @@ func NewSyslogRecorder(prefix string) *syslogRecorder {
 	return r
 }
 
+/* DEPRECATED
 func (R *syslogRecorder) GetChannels() ChanBundle {
 	return ChanBundle{R.chCtl, R.chMsg, R.chSyncErr}
 }
+*/
 
-func (R *syslogRecorder) InitErrChan() <-chan error {
-	if R.chErr == nil {
-		R.chErr = make(chan error, 256)
-		return R.chErr
-	}
-	return nil
+// Intrf returns recorder's interface channels.
+func (R *syslogRecorder) Intrf() RecorderInterface {
+	return RecorderInterface{R.chCtl, R.chMsg}
 }
 
-func (R *syslogRecorder) SetDbgChan(ch chan<- debugMessage) {
-	R.chDbg = ch
-}
-
-func (R *syslogRecorder) DropErrChan() {
-	if R.chErr != nil {
-		close(R.chErr)
-		R.chErr = nil
-	}
-}
-
-func (R *syslogRecorder) DropDbgChan() {
-	if R.chDbg != nil {
-		close(R.chDbg)
-		R.chDbg = nil
-	}
+// getID reeturns recorder's xid.
+func (R *syslogRecorder) getID() xid.ID {
+	return R.id
 }
 
 // BindSeverityFlag rebinds severity flag to the new syslog priority code.
@@ -123,41 +112,67 @@ func (R *syslogRecorder) FormatFunc(f FormatFunc) *syslogRecorder {
 func (R *syslogRecorder) Listen() {
 	if R.isListening.Get() {
 		return
+	} else {
+		R.isListening.Set(true)
+		R._log("start listener...")
 	}
-	R.isListening.Set(true)
-
-	R._log("start recorder listener")
 
 	for {
 		select {
-		case msg := <-R.chCtl:
-			switch msg {
-			case SignalInit:
+		case sig := <-R.chCtl: // recv control signal
+			switch sig.Type {
+			case SigInit:
 				R._log("RECV INIT SIGNAL")
+				respErrChan := sig.Data.(chan error) // MAP PANIC
+				R._log("  chan: %v", respErrChan)
 				e := R.initialise()
-				R.chSyncErr <- e
-			case SignalClose:
+				R._log("  send response..")
+				respErrChan <- e
+				R._log("  done")
+			case SigClose:
 				R._log("RECV CLOSE SIGNAL")
 				R.close() // rc safe
-			case SignalStop:
+			case SigStop:
 				R._log("RECV STOP SIGNAL")
 				R.isListening.Set(false)
+				R._log("stop listener...")
 				return
+
+			case SigSetErrChan:
+				R._log("RECV SET_ERR_CHAN SIGNAL")
+				R.chErr = sig.Data.(chan error) // MAY PANIC
+			case SigSetDbgChan:
+				R._log("RECV SET_DBG_CHAN SIGNAL")
+				R.chDbg = sig.Data.(chan debugMessage) // MAY PANIC
+			case SigDropErrChan:
+				R._log("RECV DROP_ERR_CHAN SIGNAL")
+				//close(R.chErr)
+				R.chErr = nil
+			case SigDropDbgChan:
+				R._log("RECV DROP_DBG_CHAN SIGNAL")
+				//close(R.chDbg)
+				R.chDbg = nil
+
 			default:
-				R._log("RECV UNKNOWN SIGNAL")
-				//R.chErr <- ErrUnknownSignal
+				R._log("ERROR: received unknown signal (%s)", sig.Type)
+				panic("xlog: received unknown signal")
 			}
-		case msg := <-R.chMsg:
-			R._log("RECV MSG")
+
+		case msg := <-R.chMsg: // write log message
+			R._log("RECV MSG SIGNAL <--\n  msg: %v", msg)
 			err := R.write(msg)
 			if err != nil {
-				R._log("ERR: %s", err.Error())
+				R._log("write error: %s", err.Error())
 				if R.chErr != nil {
 					R.chErr <- err
 				}
 			}
 		}
 	}
+}
+
+func (R *syslogRecorder) IsListening() bool {
+	return R.isListening.Get() // rc safe
 }
 
 // ----------------------------------------
@@ -230,7 +245,11 @@ func (R *syslogRecorder) write(msg LogMsg) error {
 
 func (R *syslogRecorder) _log(format string, args ...interface{}) {
 	if R.chDbg != nil {
-		msg := DbgMsg(format, args...)
+
+		// TODO
+
+		fmt := fmt.Sprintf("[%s] %s", R.id.String(), format)
+		msg := DbgMsg(fmt, args...)
 		R.chDbg <- msg
 	}
 }
