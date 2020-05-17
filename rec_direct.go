@@ -94,6 +94,12 @@ func (R *ioDirectRecorder) OnClose(f func(interface{})) *ioDirectRecorder {
 	return R
 }
 
+func (R *ioDirectRecorder) ChangePrefixOnFly(prefix string) {
+	R.Lock()
+	defer R.Unlock()
+	R.prefix = prefix
+}
+
 // -----------------------------------------------------------------------------
 
 var dbg_rand_buffer []int
