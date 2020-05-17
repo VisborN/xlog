@@ -3,8 +3,10 @@ package xlog
 import (
 	"fmt"
 	"io"
-	"math/rand"
 	"sync"
+	"time"
+
+	"github.com/rs/xid"
 )
 
 type rqRecorderSignal string
@@ -16,6 +18,7 @@ type ioDirectRecorder struct {
 	chDbg     chan<- debugMessage // used for debug output
 	chSyncErr chan error          // TMP
 
+	id          xid.ID
 	isListening bool_s // internal mutex
 	refCounter  int
 	writer      io.Writer
@@ -31,7 +34,7 @@ func NewIoDirectRecorder(
 	writer io.Writer, prefix ...string,
 ) *ioDirectRecorder {
 	r := new(ioDirectRecorder)
-	//r.id = xid.NewWithTime(time.Now())
+	r.id = xid.NewWithTime(time.Now())
 	r.chCtl = make(chan ControlSignal, 32)
 	r.chMsg = make(chan LogMsg, 64)
 	r.chSyncErr = make(chan error, 1)
@@ -46,6 +49,10 @@ func NewIoDirectRecorder(
 
 func (R *ioDirectRecorder) GetChannels() ChanBundle {
 	return ChanBundle{R.chCtl, R.chMsg, R.chSyncErr}
+}
+
+func (R *ioDirectRecorder) GetID() xid.ID {
+	return R.id
 }
 
 // InitErrChan initialises and returns an error channel to report write errors.
@@ -102,8 +109,6 @@ func (R *ioDirectRecorder) ChangePrefixOnFly(prefix string) {
 
 // -----------------------------------------------------------------------------
 
-var dbg_rand_buffer []int
-
 func (R *ioDirectRecorder) Listen() {
 	if R.isListening.Get() {
 		return
@@ -111,47 +116,38 @@ func (R *ioDirectRecorder) Listen() {
 		R.isListening.Set(true)
 	}
 
-get_rand:
-	id := rand.Intn(10)
-	for _, v := range dbg_rand_buffer {
-		if v == id {
-			goto get_rand
-		}
-	}
-	dbg_rand_buffer = append(dbg_rand_buffer, id)
-
-	R._log("start recorder listener, id=%d", id)
+	R._log("start recorder listener, id=%d", R.id)
 
 	for {
 		select {
 		case msg := <-R.chCtl:
 			switch msg {
 			case SignalInit:
-				R._log("r%d | RECV INIT SIGNAL", id)
+				R._log("r%d | RECV INIT SIGNAL", R.id)
 				R.initialise()
 				R.chSyncErr <- nil // error ain't possible
 			case SignalClose:
-				R._log("r%d | RECV CLOSE SIGNAL", id)
+				R._log("r%d | RECV CLOSE SIGNAL", R.id)
 				R.RLock()
 				R.close()
 				R.RUnlock()
 				//R._log("r%d | .refCounter=%d", id, R.refCounter)
 			case SignalStop: // TODO
-				R._log("r%d | RECV STOP SIGNAL", id)
+				R._log("r%d | RECV STOP SIGNAL", R.id)
 				R.isListening.Set(false)
 				return
 			default:
-				R._log("r%d | RECV UNKNOWN SIGNAL", id)
+				R._log("r%d | RECV UNKNOWN SIGNAL", R.id)
 				//R.chErr <- ErrUnknownSignal
 				// unknown signal, skip
 			}
 		case msg := <-R.chMsg:
-			R._log("r%d | RECV MSG", id)
+			R._log("r%d | RECV MSG", R.id)
 			err := R.write(msg)
 			if err != nil {
-				R._log("r%d | ERR: %s", id, err.Error())
+				R._log("r%d | ERR: %s", R.id, err.Error())
 				if R.chErr != nil {
-					R.chErr <- fmt.Errorf("[r%d] %s", id, err.Error())
+					R.chErr <- fmt.Errorf("[r%d] %s", R.id, err.Error())
 				}
 			}
 		}
