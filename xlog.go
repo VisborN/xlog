@@ -458,8 +458,44 @@ func (L *Logger) Close() {
 	L.initialised = false
 }
 
-// AddToDefaults sets given recorders as default for that logger.
-func (L *Logger) AddToDefaults(recorders []RecorderID) error {
+// DefaultsSet sets given recorders as default for that logger.
+func (L *Logger) DefaultsSet(recorders []RecorderID) error {
+	if CfgGlobalDisable.Get() {
+		return nil
+	}
+
+	L.Lock()
+	defer L.Unlock()
+
+	if len(L.recorders) == 0 {
+		return ErrNoRecorders
+	}
+
+	// check registered recorders
+	br := BatchResult{}
+	br.SetMsg("some of given recorder IDs are invalid")
+	for i, recID := range recorders {
+		if _, exist := L.recorders[recID]; !exist { // not found
+			br.Fail(recID, ErrWrongRecorderID)
+			// remove item from list
+			recorders[i] = recorders[len(recorders)-1]
+			recorders[len(recorders)-1] = ""
+			recorders = recorders[:len(recorders)-1]
+		} else {
+			br.OK(recID)
+		}
+	}
+
+	L.defaults = recorders
+
+	if br.Errors() != nil {
+		return br
+	}
+	return nil
+}
+
+// DefaultsAdd adds given recorders into the default list for that logger.
+func (L *Logger) DefaultsAdd(recorders []RecorderID) error {
 	if CfgGlobalDisable.Get() {
 		return nil
 	}
@@ -503,8 +539,8 @@ main_iter:
 	return nil
 }
 
-// RemoveFromDefaults removes given recorders form defaults in that logger.
-func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
+// DefaultsRemove removes given recorders form defaults in that logger.
+func (L *Logger) DefaultsRemove(recorders []RecorderID) error {
 	if CfgGlobalDisable.Get() {
 		return nil
 	}
