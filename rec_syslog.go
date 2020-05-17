@@ -3,6 +3,7 @@ package xlog
 import (
 	"errors"
 	"log/syslog"
+	"sync"
 )
 
 var errWrongPriority = errors.New("wrong priority value")
@@ -14,11 +15,13 @@ type syslogRecorder struct {
 	chDbg     chan<- debugMessage // used for debug output
 	chSyncErr chan error          // TMP
 
-	listening  bool
-	refCounter int
-	prefix     string
-	format     FormatFunc
-	logger     *syslog.Writer
+	isListening bool_s // internal mutex
+	refCounter  int
+	prefix      string // can't be changeable
+	logger      *syslog.Writer
+
+	sync.RWMutex
+	format FormatFunc
 
 	// says which function to use for each severity
 	sevBindings map[MsgFlagT]syslog.Priority
@@ -50,6 +53,10 @@ func NewSyslogRecorder(prefix string) *syslogRecorder {
 	return r
 }
 
+func (R *syslogRecorder) GetChannels() ChanBundle {
+	return ChanBundle{R.chCtl, R.chMsg, R.chSyncErr}
+}
+
 func (R *syslogRecorder) InitErrChan() <-chan error {
 	if R.chErr == nil {
 		R.chErr = make(chan error, 256)
@@ -76,15 +83,48 @@ func (R *syslogRecorder) DropDbgChan() {
 	}
 }
 
-func (R *syslogRecorder) GetChannels() ChanBundle {
-	return ChanBundle{R.chCtl, R.chMsg, R.chSyncErr}
+// BindSeverityFlag rebinds severity flag to the new syslog priority code.
+func (R *syslogRecorder) BindSeverityFlag(severity MsgFlagT, priority syslog.Priority) error {
+	severity = severity &^ SeverityShadowMask
+
+	R.Lock()
+	defer R.Unlock()
+
+	if _, exist := R.sevBindings[severity]; !exist {
+		return ErrWrongFlagValue
+	}
+
+	if // syslog.Priority can contains facility codes
+	priority != syslog.LOG_EMERG &&
+		priority != syslog.LOG_ALERT &&
+		priority != syslog.LOG_CRIT &&
+		priority != syslog.LOG_ERR &&
+		priority != syslog.LOG_WARNING &&
+		priority != syslog.LOG_NOTICE &&
+		priority != syslog.LOG_INFO &&
+		priority != syslog.LOG_DEBUG {
+		return errWrongPriority
+	}
+
+	R.sevBindings[severity] = priority
+	return nil
 }
 
+// FormatFunc sets custom formatter function for this recorder.
+func (R *syslogRecorder) FormatFunc(f FormatFunc) *syslogRecorder {
+	R.Lock()
+	defer R.Unlock()
+	R.format = f
+	return R
+}
+
+// -----------------------------------------------------------------------------
+
 func (R *syslogRecorder) Listen() {
-	if R.listening {
+	if R.isListening.Get() {
 		return
 	}
-	R.listening = true
+	R.isListening.Set(true)
 
 	R._log("start recorder listener")
 
@@ -98,10 +138,10 @@ func (R *syslogRecorder) Listen() {
 				R.chSyncErr <- e
 			case SignalClose:
 				R._log("RECV CLOSE SIGNAL")
-				R.close()
+				R.close() // rc safe
 			case SignalStop:
 				R._log("RECV STOP SIGNAL")
-				R.listening = false
+				R.isListening.Set(false)
 				return
 			default:
 				R._log("RECV UNKNOWN SIGNAL")
@@ -119,6 +159,8 @@ func (R *syslogRecorder) Listen() {
 		}
 	}
 }
+
+// ----------------------------------------
 
 func (R *syslogRecorder) initialise() error {
 	//if R.refCounter < 0 { R.refCounter = 0 }
@@ -143,50 +185,20 @@ func (R *syslogRecorder) close() {
 	R.refCounter--
 }
 
-// BindSeverityFlag rebinds severity flag to the new syslog priority code.
-func (R *syslogRecorder) BindSeverityFlag(severity MsgFlagT, priority syslog.Priority) error {
-	severity = severity &^ SeverityShadowMask
-	if _, exist := R.sevBindings[severity]; !exist {
-		return ErrWrongFlagValue
-	}
-
-	if // syslog.Priority can contains facility codes
-	priority != syslog.LOG_EMERG &&
-		priority != syslog.LOG_ALERT &&
-		priority != syslog.LOG_CRIT &&
-		priority != syslog.LOG_ERR &&
-		priority != syslog.LOG_WARNING &&
-		priority != syslog.LOG_NOTICE &&
-		priority != syslog.LOG_INFO &&
-		priority != syslog.LOG_DEBUG {
-		return errWrongPriority
-	}
-
-	R.sevBindings[severity] = priority
-	return nil
-}
-
-// FormatFunc sets custom formatter function for this recorder.
-func (R *syslogRecorder) FormatFunc(f FormatFunc) *syslogRecorder {
-	R.format = f
-	return R
-}
-
-// DropDebugger sets debug channel to nil if it has been passed earlier.
-// It allows the recorder to continue normal work when debug listener stopped.
-func (R *syslogRecorder) DropDebugger() {
-	R.chDbg = nil
-}
+// ----------------------------------------
 
 func (R *syslogRecorder) write(msg LogMsg) error {
 	if R.refCounter == 0 {
 		return ErrNotInitialised
 	}
 	msgData := msg.content
+
+	R.RLock()
+	defer R.RUnlock()
+
 	if R.format != nil {
 		msgData = R.format(&msg)
 	}
-
 	sev := msg.flags &^ SeverityShadowMask
 	if priority, exist := R.sevBindings[sev]; exist {
 		switch priority { // WRITE

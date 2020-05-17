@@ -4,26 +4,26 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"sync"
 )
 
 type rqRecorderSignal string
 
 type ioDirectRecorder struct {
-	// We used two-way channels here, so you should
-	// be careful at using it inside the recorder.
-
 	chCtl     chan ControlSignal  // receives a control signals
 	chMsg     chan LogMsg         // receives a log message
 	chErr     chan error          // returns a write errors
 	chDbg     chan<- debugMessage // used for debug output
 	chSyncErr chan error          // TMP
 
-	listening  bool
-	refCounter int
-	prefix     string
-	format     FormatFunc
-	writer     io.Writer
-	closer     func(interface{})
+	isListening bool_s // internal mutex
+	refCounter  int
+	writer      io.Writer
+
+	sync.RWMutex
+	prefix string
+	format FormatFunc
+	closer func(interface{})
 }
 
 // NewIoDirectRecorder allocates and returns a new io direct recorder.
@@ -31,6 +31,7 @@ func NewIoDirectRecorder(
 	writer io.Writer, prefix ...string,
 ) *ioDirectRecorder {
 	r := new(ioDirectRecorder)
+	//r.id = xid.NewWithTime(time.Now())
 	r.chCtl = make(chan ControlSignal, 32)
 	r.chMsg = make(chan LogMsg, 64)
 	r.chSyncErr = make(chan error, 1)
@@ -77,13 +78,32 @@ func (R *ioDirectRecorder) DropDbgChan() {
 	}
 }
 
+// FormatFunc sets custom formatter function for this recorder.
+func (R *ioDirectRecorder) FormatFunc(f FormatFunc) *ioDirectRecorder {
+	R.Lock()
+	R.format = f
+	R.Unlock()
+	return R
+}
+
+// OnClose sets function which will be executed on close() function call.
+func (R *ioDirectRecorder) OnClose(f func(interface{})) *ioDirectRecorder {
+	R.Lock()
+	R.closer = f
+	R.Unlock()
+	return R
+}
+
+// -----------------------------------------------------------------------------
+
 var dbg_rand_buffer []int
 
 func (R *ioDirectRecorder) Listen() {
-	if R.listening {
+	if R.isListening.Get() {
 		return
+	} else {
+		R.isListening.Set(true)
 	}
-	R.listening = true
 
 get_rand:
 	id := rand.Intn(10)
@@ -106,11 +126,13 @@ get_rand:
 				R.chSyncErr <- nil // error ain't possible
 			case SignalClose:
 				R._log("r%d | RECV CLOSE SIGNAL", id)
+				R.RLock()
 				R.close()
+				R.RUnlock()
 				//R._log("r%d | .refCounter=%d", id, R.refCounter)
 			case SignalStop: // TODO
 				R._log("r%d | RECV STOP SIGNAL", id)
-				R.listening = false
+				R.isListening.Set(false)
 				return
 			default:
 				R._log("r%d | RECV UNKNOWN SIGNAL", id)
@@ -130,11 +152,11 @@ get_rand:
 	}
 }
 
-/*
 func (R *ioDirectRecorder) IsListening() bool {
-	return R.listening
+	return R.isListening.Get() // rc safe
 }
-*/
+
+// ----------------------------------------
 
 func (R *ioDirectRecorder) initialise() {
 	R.refCounter++
@@ -153,29 +175,21 @@ func (R *ioDirectRecorder) close() {
 	R.refCounter--
 }
 
-// FormatFunc sets custom formatter function for this recorder.
-func (R *ioDirectRecorder) FormatFunc(f FormatFunc) *ioDirectRecorder {
-	R.format = f
-	return R
-}
-
-// OnClose sets function which will be executed on close() function call.
-func (R *ioDirectRecorder) OnClose(f func(interface{})) *ioDirectRecorder {
-	R.closer = f
-	return R
-}
+// ----------------------------------------
 
 func (R *ioDirectRecorder) write(msg LogMsg) error {
 	if R.refCounter == 0 {
 		return ErrNotInitialised
 	}
 	msgData := msg.content
+	R.RLock()
 	if R.format != nil {
 		msgData = R.format(&msg)
 	}
 	if R.prefix != "" {
 		msgData = fmt.Sprintf("%s %s", R.prefix, msgData)
 	}
+	R.RUnlock()
 	if msgData[len(msgData)-1] != '\n' {
 		msgData += "\n"
 	}
@@ -191,6 +205,8 @@ func (R *ioDirectRecorder) _log(format string, args ...interface{}) {
 		R.chDbg <- msg
 	}
 }
+
+// -----------------------------------------------------------------------------
 
 // TODO: more flags
 // TODO: file & line
