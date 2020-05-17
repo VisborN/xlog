@@ -24,7 +24,24 @@ custom flags bits:
 
 */
 
-var GlobalDisable bool = false
+type bool_s struct {
+	sync.RWMutex
+	v bool
+}
+
+func (m *bool_s) Set(value bool) {
+	m.Lock()
+	defer m.Unlock()
+	m.v = value
+}
+
+func (m *bool_s) Get() bool {
+	m.RLock()
+	defer m.RUnlock()
+	return m.v
+}
+
+var CfgGlobalDisable bool_s = bool_s{v: false}
 
 type MsgFlagT uint16
 
@@ -50,6 +67,22 @@ const ( // attribute flags
 	CustomB4 MsgFlagT = 0x8000 // 1000 0000 0000 0000
 )
 
+// bit-reset (reversed) mask for severity flags
+const SeverityShadowMask MsgFlagT = 0xCF00
+
+// bit-reset (reversed) mask for attribute flags
+const AttributeShadowMask MsgFlagT = 0x30FF
+
+// predefined severity sets
+const SeverityAll MsgFlagT = 0x30FF
+const SeverityMajor MsgFlagT = 0x001F
+const SeverityMinor MsgFlagT = 0x00E0
+const SeverityDefault MsgFlagT = 0x00FF
+const SeverityCustom MsgFlagT = 0x3000
+
+// used when severity is 0
+const defaultSeverity = Info
+
 func (f MsgFlagT) String() string {
 	switch f {
 	case Emerg:
@@ -73,29 +106,6 @@ func (f MsgFlagT) String() string {
 	}
 }
 
-// bit-reset (reversed) mask for severity flags
-const SeverityShadowMask MsgFlagT = 0xCF00
-
-// bit-reset (reversed) mask for attribute flags
-const AttributeShadowMask MsgFlagT = 0x30FF
-
-// predefined severity sets
-const SeverityAll MsgFlagT = 0x30FF
-const SeverityMajor MsgFlagT = 0x001F
-const SeverityMinor MsgFlagT = 0x00E0
-const SeverityDefault MsgFlagT = 0x00FF
-const SeverityCustom MsgFlagT = 0x3000
-
-// used when severity is 0
-const defaultSeverity = Info
-
-// ssDirection describes two-way directions.
-// It primarily used in severity order lists.
-type ssDirection bool
-
-const Before ssDirection = true
-const After ssDirection = false
-
 func defaultSeverityOrder() *list.List {
 	orderlist := list.New().Init()
 	orderlist.PushBack(Emerg)
@@ -110,6 +120,13 @@ func defaultSeverityOrder() *list.List {
 	orderlist.PushBack(CustomB2)
 	return orderlist
 }
+
+// ssDirection describes two-way directions.
+// It primarily used in severity order lists.
+type ssDirection bool
+
+const Before ssDirection = true
+const After ssDirection = false
 
 // -----------------------------------------------------------------------------
 
@@ -234,8 +251,8 @@ func (L *Logger) NumberOfRecorders() int {
 }
 
 // The same as RegisterRecorderEx, but adds recorder to defaults anyways.
-func (L *Logger) RegisterRecorder(id RecorderID, channels ChanBundle) error {
-	return L.RegisterRecorderEx(id, channels, true)
+func (L *Logger) RegisterRecorder(id RecorderID, intrf ChanBundle) error {
+	return L.RegisterRecorderEx(id, intrf, true)
 }
 
 // RegisterRecorder registers the recorder in the logger with the given id.
@@ -244,7 +261,7 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, intrf ChanBundle, asDefault b
 	// This function should configure all related fields. Other functions
 	// will return an error or cause panic if they meet a wrong logger data.
 
-	if GlobalDisable {
+	if CfgGlobalDisable.Get() {
 		return nil
 	}
 
@@ -305,7 +322,7 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, intrf ChanBundle, asDefault b
 }
 
 func (L *Logger) UnregisterRecorder(id RecorderID) error {
-	if GlobalDisable {
+	if CfgGlobalDisable.Get() {
 		return nil
 	}
 	if len(L.recorders) == 0 {
@@ -356,7 +373,7 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 
 // Initialise invokes initialisation functions of each registered recorder.
 func (L *Logger) Initialise() error {
-	if GlobalDisable {
+	if CfgGlobalDisable.Get() {
 		return nil
 	}
 	if L.initialised {
@@ -428,7 +445,7 @@ func (L *Logger) Close() {
 
 // AddToDefaults sets given recorders as default for that logger.
 func (L *Logger) AddToDefaults(recorders []RecorderID) error {
-	if GlobalDisable {
+	if CfgGlobalDisable.Get() {
 		return nil
 	}
 	if len(L.recorders) == 0 {
@@ -472,7 +489,7 @@ main_iter:
 
 // RemoveFromDefaults removes given recorders form defaults in that logger.
 func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
-	if GlobalDisable {
+	if CfgGlobalDisable.Get() {
 		return nil
 	}
 	if len(L.recorders) == 0 {
@@ -523,10 +540,10 @@ func (L *Logger) RemoveFromDefaults(recorders []RecorderID) error {
 func (L *Logger) ChangeSeverityOrder(
 	recorder RecorderID, srcFlag MsgFlagT, dir ssDirection, trgFlag MsgFlagT,
 ) error {
-	if GlobalDisable {
+
+	if CfgGlobalDisable.Get() {
 		return nil
 	}
-
 	if len(L.recorders) == 0 {
 		return ErrNoRecorders
 	}
@@ -600,9 +617,10 @@ func (L *Logger) ChangeSeverityOrder(
 
 // SetSeverityMask sets which severities allowed for the given recorder in this logger.
 func (L *Logger) SetSeverityMask(recorder RecorderID, flags MsgFlagT) error {
-	if GlobalDisable {
+	if CfgGlobalDisable.Get() {
 		return nil
 	}
+
 	if L.severityMasks == nil {
 		return internalError(ieCritical, "bumped to nil")
 	}
@@ -636,7 +654,7 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags MsgFlagT) error {
 //
 // Returns nil in case of success otherwise returns an error.
 func (L *Logger) Write(flags MsgFlagT, msgFmt string, msgArgs ...interface{}) error {
-	if GlobalDisable {
+	if CfgGlobalDisable.Get() {
 		return nil
 	}
 	msg := NewLogMsg().SetFlags(flags)
@@ -651,7 +669,7 @@ func (L *Logger) Write(flags MsgFlagT, msgFmt string, msgArgs ...interface{}) er
 //
 // Returns nil on success and error on fail.
 func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
-	if GlobalDisable {
+	if CfgGlobalDisable.Get() {
 		return nil
 	}
 
