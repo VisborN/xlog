@@ -117,10 +117,10 @@ func (R *ioDirectRecorder) Listen() {
 
 			case SigSetErrChan:
 				R._log("RECV SET_ERR_CHAN SIGNAL")
-				R.chErr = sig.Data.(chan error) // MAY PANIC
+				R.chErr = sig.Data.(chan<- error) // MAY PANIC
 			case SigSetDbgChan:
 				R._log("RECV SET_DBG_CHAN SIGNAL")
-				R.chDbg = sig.Data.(chan debugMessage) // MAY PANIC
+				R.chDbg = sig.Data.(chan<- debugMessage) // MAY PANIC
 			case SigDropErrChan:
 				R._log("RECV DROP_ERR_CHAN SIGNAL")
 				//close(R.chErr)
