@@ -209,6 +209,14 @@ const (
 	SigDropDbgChan SignalType = "SIG_GROP_DBG"
 )
 
+func SignalInit(chErr chan error) ControlSignal       { return ControlSignal{SigInit, chErr} }
+func SignalClose() ControlSignal                      { return ControlSignal{SigClose, nil} }
+func SignalStop() ControlSignal                       { return ControlSignal{SigStop, nil} }
+func SignalSetErrChan(chErr chan error) ControlSignal { return ControlSignal{SigSetErrChan, chErr} }
+func SignalSetDbgChan(chDbg chan error) ControlSignal { return ControlSignal{SigSetDbgChan, chDbg} }
+func SignalDropErrChan() ControlSignal                { return ControlSignal{SigDropErrChan, nil} }
+func SignalDropDbgChan() ControlSignal                { return ControlSignal{SigDropDbgChan, nil} }
+
 type FormatFunc func(*LogMsg) string
 
 type logRecorder interface {
