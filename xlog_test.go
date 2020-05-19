@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/rs/xid"
 )
 
 var dc chan<- debugMessage
@@ -43,7 +45,7 @@ func ResetErrChan(chErr <-chan error) {
 }
 
 func TestGeneral(t *testing.T) {
-	dc <- DbgMsg("--- TestGeneral()")
+	dc <- DbgMsg(xid.NilID(), "--- TestGeneral()")
 	logger := NewLogger()
 	rec := NewIoDirectRecorder(os.Stdout)
 	rec.Intrf().ChCtl <- ControlSignal{SigSetDbgChan, dc}
@@ -61,7 +63,7 @@ func TestGeneral(t *testing.T) {
 	t.Log("listen <-")
 	go rec.Listen() // <----
 	//defer func() { rec.GetChannels().ChCtl <- SignalStop }()
-	dc <- DbgMsg("goshed")
+	dc <- DbgMsg(xid.NilID(), "goshed")
 	runtime.Gosched()
 	/*
 		if !rec.listening {
@@ -101,7 +103,7 @@ func TestGeneral(t *testing.T) {
 }
 
 func TestSyslogRecorder(t *testing.T) {
-	dc <- DbgMsg("--- TestSyslogRecorder()")
+	dc <- DbgMsg(xid.NilID(), "--- TestSyslogRecorder()")
 	logger := NewLogger()
 	rec := NewSyslogRecorder("XLOG")
 	rec.Intrf().ChCtl <- ControlSignal{SigSetDbgChan, dc}
@@ -113,14 +115,14 @@ func TestSyslogRecorder(t *testing.T) {
 	}
 	t.Log("initialising logger...")
 	//fmt.Print("initialising logger...\n")
-	//dc <- DbgMsg("initialising logger...")
+	//dc <- DbgMsg(xid.NilID(), "initialising logger...")
 	if err := logger.Initialise(); err != nil {
 		t.Errorf("%s", err.Error())
 		return
 	} else {
 		t.Log("OK")
 		//fmt.Print("done.\n")
-		//dc <- DbgMsg("done.")
+		//dc <- DbgMsg(xid.NilID(), "done.")
 		defer logger.Close()
 	}
 	t.Log("sending message...")
@@ -135,8 +137,8 @@ func TestInitialisation(t *testing.T) {
 
 	t.SkipNow() // <---   TODO
 
-	dc <- DbgMsg("--- TestInitialisation()")
-	dc <- DbgMsg("use debugRecorder{} here")
+	dc <- DbgMsg(xid.NilID(), "--- TestInitialisation()")
+	dc <- DbgMsg(xid.NilID(), "use debugRecorder{} here")
 
 	logger := NewLogger()
 	rec1 := t_newDebugRecorder("DR1", nil)
@@ -239,7 +241,7 @@ func TestInitialisation(t *testing.T) {
 }
 
 func TestRefCounter(t *testing.T) {
-	dc <- DbgMsg("--- TestRefCounter()")
+	dc <- DbgMsg(xid.NilID(), "--- TestRefCounter()")
 	//runtime.Gosched() // we don't use def. rec in prev test
 
 	var testValOutputFlag bool = true
@@ -263,7 +265,7 @@ func TestRefCounter(t *testing.T) {
 	defer func() { runtime.Gosched() }()
 	go rec.Listen()
 	defer func() {
-		dc <- DbgMsg("rec1 defer")
+		dc <- DbgMsg(xid.NilID(), "rec1 defer")
 		rec.Intrf().ChCtl <- ControlSignal{SigStop, nil}
 	}()
 	logger1.RegisterRecorder("direct", rec.Intrf())
@@ -311,7 +313,7 @@ func TestRefCounter(t *testing.T) {
 		rec2.Intrf().ChCtl <- ControlSignal{SigSetDbgChan, dc}
 		go rec2.Listen()
 		defer func() {
-			dc <- DbgMsg("rec2 defer")
+			dc <- DbgMsg(xid.NilID(), "rec2 defer")
 			rec2.Intrf().ChCtl <- ControlSignal{SigStop, nil}
 		}()
 		logger2.RegisterRecorder("direct-2", rec2.Intrf())
@@ -326,7 +328,7 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("unregistering error: %s", err.Error())
 		return
 	}
-	dc <- DbgMsg("goshed")
+	dc <- DbgMsg(xid.NilID(), "goshed")
 	runtime.Gosched()
 	// >>>>> RACE CONDITION <<<<<
 	if !testFunc(rec.refCounter, 1) {
@@ -352,7 +354,7 @@ func TestRefCounter(t *testing.T) {
 		t.Errorf("unregistering error: %s", err.Error())
 		return
 	}
-	dc <- DbgMsg("goshed")
+	dc <- DbgMsg(xid.NilID(), "goshed")
 	{
 		//runtime.Gosched()
 		time.Sleep(time.Second)
@@ -395,7 +397,7 @@ func TestRefCounter(t *testing.T) {
 // =======================================================================
 
 func TestSeverityOrder(t *testing.T) {
-	dc <- DbgMsg("--- TestSeverityOrder()")
+	dc <- DbgMsg(xid.NilID(), "--- TestSeverityOrder()")
 
 	logger := NewLogger()
 	logFile, err := os.OpenFile("test.log", os.O_APPEND|os.O_WRONLY, 0644)
@@ -414,8 +416,8 @@ func TestSeverityOrder(t *testing.T) {
 		return
 	}
 	/* RACE CONDITION
-	dc <- DbgMsg("logger: %v", logger)
-	dc <- DbgMsg("recorder: %v", rec)
+	dc <- DbgMsg(xid.NilID(), "logger: %v", logger)
+	dc <- DbgMsg(xid.NilID(), "recorder: %v", rec)
 	*/
 	if err := logger.Initialise(); err != nil {
 		if br, ok := err.(BatchResult); ok {
@@ -470,7 +472,7 @@ func TestSeverityOrder(t *testing.T) {
 }
 
 func TestSeverityMask(t *testing.T) {
-	dc <- DbgMsg("--- TestSeverityMask()")
+	dc <- DbgMsg(xid.NilID(), "--- TestSeverityMask()")
 	//ResetErrChan(DefErrChan)
 
 	logger := NewLogger()

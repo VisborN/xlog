@@ -2,7 +2,6 @@ package xlog
 
 import (
 	"errors"
-	"fmt"
 	"log/syslog"
 	"sync"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/rs/xid"
 )
 
+// TODO
 var errWrongPriority = errors.New("wrong priority value")
 
 type syslogRecorder struct {
@@ -55,12 +55,6 @@ func NewSyslogRecorder(prefix string) *syslogRecorder {
 
 	return r
 }
-
-/* DEPRECATED
-func (R *syslogRecorder) GetChannels() ChanBundle {
-	return ChanBundle{R.chCtl, R.chMsg, R.chSyncErr}
-}
-*/
 
 // Intrf returns recorder's interface channels.
 func (R *syslogRecorder) Intrf() RecorderInterface {
@@ -155,7 +149,7 @@ func (R *syslogRecorder) Listen() {
 
 			default:
 				R._log("ERROR: received unknown signal (%s)", sig.Type)
-				panic("xlog: received unknown signal")
+				panic("xlog: received unknown signal") // PANIC
 			}
 
 		case msg := <-R.chMsg: // write log message
@@ -164,7 +158,7 @@ func (R *syslogRecorder) Listen() {
 			if err != nil {
 				R._log("write error: %s", err.Error())
 				if R.chErr != nil {
-					R.chErr <- err
+					R.chErr <- err // MAY PANIC
 				}
 			}
 		}
@@ -245,11 +239,8 @@ func (R *syslogRecorder) write(msg LogMsg) error {
 
 func (R *syslogRecorder) _log(format string, args ...interface{}) {
 	if R.chDbg != nil {
-
-		// TODO
-
-		fmt := fmt.Sprintf("[%s] %s", R.id.String(), format)
-		msg := DbgMsg(fmt, args...)
+		msg := DbgMsg(R.id, format, args...)
+		msg.rtype = "syslogRecorder"
 		R.chDbg <- msg
 	}
 }

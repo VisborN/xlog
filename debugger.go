@@ -4,38 +4,43 @@ package xlog
 // and synchronisation errors. Pass channel returned by debugLogger.Chan() function
 // to the recorder as debug channel to collect debugging data.
 
-// Built-in recorders will write to debug channel automatically if it passed.
-// You can also write user messages to it: d.Chan() <- DbgMsg("my message")
-// To stop listener just close the channel: close(d.Chan())
+// Built-in recorders will write to debug channel automatically if it passed. You
+// can also write user messages to it: d.Chan() <- DbgMsg(xid.NilID(), "my message")
+// To stop debug listener just close the channel: close(d.Chan())
 
-// BE CAREFUL WITH CHANNEL CLOSING: it can be closed only after the all ops.
-// Another way you can call recorder.DropDebugger() for all recorders to disconnect
-// debug channel which allows the recorder to continue normal work without debugging.
+// BE CAREFUL WITH CHANNEL CLOSING: it can be closed only after all ops ended.
+// Another way you can send SigDropDbgChan for all recorders to disconnect
+// debug channel which allows the recorder to continue normal work without
+// debugging.
 
 import (
 	"fmt"
 	"io"
-	"sync"
 	"time"
+
+	"github.com/rs/xid"
 )
 
 type debugMessage struct {
-	time time.Time
-	data string
+	rtype string // recorder type (sets by caller manually)
+	id    xid.ID
+	time  time.Time
+	data  string
 }
 
-func DbgMsg(format string, args ...interface{}) debugMessage {
-	return debugMessage{
+func DbgMsg(recorderXID xid.ID, format string, args ...interface{}) debugMessage {
+	return debugMessage{rtype: "?",
+		id:   recorderXID,
 		data: fmt.Sprintf(format, args...),
 		time: time.Now(),
 	}
 }
 
 type debugLogger struct {
-	sync.Mutex
-	listening bool
-	channel   chan debugMessage
-	writer    io.Writer
+	//sync.RWMutex
+	isListening bool_s
+	channel     chan debugMessage
+	writer      io.Writer
 }
 
 func NewDebugLogger(writer io.Writer) *debugLogger {
@@ -43,43 +48,39 @@ func NewDebugLogger(writer io.Writer) *debugLogger {
 		return nil
 	}
 	d := new(debugLogger)
+	d.channel = make(chan debugMessage, 64)
 	d.writer = writer
-	d.channel = make(chan debugMessage, 10)
 	return d
 }
 
 func (D *debugLogger) Close() {
-	D.Lock()
-	close(D.channel)
+	close(D.channel) // ATTENTION
 	D.channel = nil
-	D.Unlock()
 }
 
 func (D *debugLogger) Listen() {
-	if D.listening || D.writer == nil {
+	if D.isListening.Get() || D.writer == nil {
 		return
 	}
-	D.listening = true
+	D.isListening.Set(true)
 	fmt.Print(".....XLOG DEBUG LISTENER STARTED.....\n")
 	D.writer.Write([]byte(fmt.Sprintf("-------------------- %v\n", time.Now())))
 
 	for msg := range D.channel {
-		msg := fmt.Sprintf("[%s] %s", msg.time.Format("15:04:05.000000000"), msg.data)
+		msg := fmt.Sprintf("[%s] {%s:%s} %s",
+			msg.time.Format("15:04:05.000000000"), msg.rtype, msg.id.String(), msg.data)
 		if msg[len(msg)-1] != '\n' {
 			msg += "\n"
 		}
 		if _, err := D.writer.Write([]byte(msg)); err != nil {
-			fmt.Printf(".....XLOG DEBUG LISTENER WRITE ERROR.....\n  %v\n", err)
+			fmt.Printf(".....XLOG DEBUG LISTENER WRITE ERROR.....\nevent time: %s\nerror: %v\n",
+				time.Now().Format("15:04:05.000000000"), err)
 		}
 	}
 
-	D.listening = false
+	D.isListening.Set(false)
 	fmt.Print(".....XLOG DEBUG LISTENER STOPPED.....\n")
 	fmt.Printf("event time: %s\n", time.Now().Format("15:04:05.000000000"))
-}
-
-func (D *debugLogger) Write() {
-	//
 }
 
 func (D *debugLogger) Chan() chan<- debugMessage {

@@ -44,12 +44,6 @@ func NewIoDirectRecorder(
 	return r
 }
 
-/* DEPRECATED
-func (R *ioDirectRecorder) GetChannels() ChanBundle {
-	return ChanBundle{R.chCtl, R.chMsg, R.chSyncErr}
-}
-*/
-
 // Intrf returns recorder's interface channels.
 func (R *ioDirectRecorder) Intrf() RecorderInterface {
 	return RecorderInterface{R.chCtl, R.chMsg}
@@ -132,7 +126,7 @@ func (R *ioDirectRecorder) Listen() {
 
 			default:
 				R._log("ERROR: received unknown signal (%s)", sig.Type)
-				panic("xlog: received unknown signal")
+				panic("xlog: received unknown signal") // PANIC
 			}
 
 		case msg := <-R.chMsg: // write log message
@@ -141,7 +135,7 @@ func (R *ioDirectRecorder) Listen() {
 			if err != nil {
 				R._log("write error: %s", err.Error())
 				if R.chErr != nil {
-					R.chErr <- err
+					R.chErr <- err // MAY PANIC
 				}
 			}
 		}
@@ -195,13 +189,10 @@ func (R *ioDirectRecorder) write(msg LogMsg) error {
 	return nil
 }
 
-func (R *ioDirectRecorder) _log(format string, args ...interface{}) {
+func (R *ioDirectRecorder) _log(format string, args ...interface{}) { // MAY PANIC
 	if R.chDbg != nil {
-
-		// TODO
-
-		fmt := fmt.Sprintf("[%s] %s", R.id.String(), format)
-		msg := DbgMsg(fmt, args...)
+		msg := DbgMsg(R.id, format, args...)
+		msg.rtype = "ioDirectRecorder"
 		R.chDbg <- msg
 	}
 }
