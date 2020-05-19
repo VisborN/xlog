@@ -56,6 +56,13 @@ func NewSyslogRecorder(prefix string) *syslogRecorder {
 	return r
 }
 
+// SpawnSyslogRecorder creates recorder and starts a listener.
+func SpawnSyslogRecorder(prefix string) *syslogRecorder {
+	r := NewSyslogRecorder(prefix)
+	go r.Listen()
+	return r
+}
+
 // Intrf returns recorder's interface channels.
 func (R *syslogRecorder) Intrf() RecorderInterface {
 	return RecorderInterface{R.chCtl, R.chMsg}

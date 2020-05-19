@@ -44,6 +44,15 @@ func NewIoDirectRecorder(
 	return r
 }
 
+// SpawnIoDirectRecorder creates recorder and starts a listener.
+func SpawnIoDirectRecorder(
+	writer io.Writer, prefix ...string,
+) *ioDirectRecorder {
+	r := NewIoDirectRecorder(writer, prefix...)
+	go r.Listen()
+	return r
+}
+
 // Intrf returns recorder's interface channels.
 func (R *ioDirectRecorder) Intrf() RecorderInterface {
 	return RecorderInterface{R.chCtl, R.chMsg}

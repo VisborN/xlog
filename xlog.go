@@ -131,6 +131,8 @@ func (m *bool_s) Get() bool {
 
 var CfgGlobalDisable bool_s = bool_s{v: false}
 
+//var CfgPreventPanic bool_s = bools_s{v: false}
+
 // -----------------------------------------------------------------------------
 
 type LogMsg struct {
@@ -219,7 +221,7 @@ func SignalDropDbgChan() controlSignal                { return controlSignal{Sig
 
 type FormatFunc func(*LogMsg) string
 
-type logRecorder interface {
+type LogRecorder interface {
 	Listen()
 	IsListening() bool
 	Intrf() RecorderInterface
