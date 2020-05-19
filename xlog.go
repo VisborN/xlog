@@ -191,31 +191,31 @@ func (LM *LogMsg) GetContent() string { return LM.content }
 
 // -----------------------------------------------------------------------------
 
-type SignalType string
+type signalType string
 
-type ControlSignal struct {
-	Type SignalType
-	Data interface{}
+type controlSignal struct { // TMP RPLS
+	stype signalType
+	data  interface{}
 }
 
 const (
-	SigInit  SignalType = "SIG_INIT"
-	SigClose SignalType = "SIG_CLOSE"
-	SigStop  SignalType = "SIG_STOP"
+	SigInit  signalType = "SIG_INIT"
+	SigClose signalType = "SIG_CLOSE"
+	SigStop  signalType = "SIG_STOP"
 
-	SigSetErrChan  SignalType = "SIG_SET_ERR"
-	SigSetDbgChan  SignalType = "SIG_SET_DBG"
-	SigDropErrChan SignalType = "SIG_DROP_ERR"
-	SigDropDbgChan SignalType = "SIG_GROP_DBG"
+	SigSetErrChan  signalType = "SIG_SET_ERR"
+	SigSetDbgChan  signalType = "SIG_SET_DBG"
+	SigDropErrChan signalType = "SIG_DROP_ERR"
+	SigDropDbgChan signalType = "SIG_GROP_DBG"
 )
 
-func SignalInit(chErr chan error) ControlSignal       { return ControlSignal{SigInit, chErr} }
-func SignalClose() ControlSignal                      { return ControlSignal{SigClose, nil} }
-func SignalStop() ControlSignal                       { return ControlSignal{SigStop, nil} }
-func SignalSetErrChan(chErr chan error) ControlSignal { return ControlSignal{SigSetErrChan, chErr} }
-func SignalSetDbgChan(chDbg chan error) ControlSignal { return ControlSignal{SigSetDbgChan, chDbg} }
-func SignalDropErrChan() ControlSignal                { return ControlSignal{SigDropErrChan, nil} }
-func SignalDropDbgChan() ControlSignal                { return ControlSignal{SigDropDbgChan, nil} }
+func SignalInit(chErr chan error) controlSignal       { return controlSignal{SigInit, chErr} }
+func SignalClose() controlSignal                      { return controlSignal{SigClose, nil} }
+func SignalStop() controlSignal                       { return controlSignal{SigStop, nil} }
+func SignalSetErrChan(chErr chan error) controlSignal { return controlSignal{SigSetErrChan, chErr} }
+func SignalSetDbgChan(chDbg chan error) controlSignal { return controlSignal{SigSetDbgChan, chDbg} }
+func SignalDropErrChan() controlSignal                { return controlSignal{SigDropErrChan, nil} }
+func SignalDropDbgChan() controlSignal                { return controlSignal{SigDropDbgChan, nil} }
 
 type FormatFunc func(*LogMsg) string
 
@@ -228,7 +228,7 @@ type logRecorder interface {
 
 // RecorderInterface structure represents recorder interface channels.
 type RecorderInterface struct {
-	ChCtl chan<- ControlSignal
+	ChCtl chan<- controlSignal
 	ChMsg chan<- LogMsg
 }
 
@@ -364,7 +364,8 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 			return internalError(ieUnreachable, ".recordersState: missing valid id")
 		} else {
 			if initialised {
-				rc.ChCtl <- ControlSignal{SigClose, nil}
+				//rc.ChCtl <- controlSignal{SigClose, nil}
+				rc.ChCtl <- SignalClose()
 			}
 		}
 	}
@@ -422,7 +423,8 @@ func (L *Logger) Initialise() error {
 				continue
 			}
 			chErr := make(chan error)
-			rec.ChCtl <- ControlSignal{SigInit, chErr}
+			//rec.ChCtl <- controlSignal{SigInit, chErr}
+			rec.ChCtl <- SignalInit(chErr)
 			err := <-chErr
 			if err != nil {
 				// ACTIONS...
@@ -460,7 +462,8 @@ func (L *Logger) Close() {
 		return
 	}
 	for _, rec := range L.recorders {
-		rec.ChCtl <- ControlSignal{SigClose, nil}
+		//rec.ChCtl <- controlSignal{SigClose, nil}
+		rec.ChCtl <- SignalClose()
 	}
 
 	L.initialised = false

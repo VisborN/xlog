@@ -12,7 +12,7 @@ import (
 type rqRecorderSignal string
 
 type ioDirectRecorder struct {
-	chCtl chan ControlSignal
+	chCtl chan controlSignal
 	chMsg chan LogMsg
 	chErr chan<- error        // optional
 	chDbg chan<- debugMessage // optional
@@ -34,7 +34,7 @@ func NewIoDirectRecorder(
 ) *ioDirectRecorder {
 	r := new(ioDirectRecorder)
 	r.id = xid.NewWithTime(time.Now())
-	r.chCtl = make(chan ControlSignal, 32)
+	r.chCtl = make(chan controlSignal, 32)
 	r.chMsg = make(chan LogMsg, 64)
 	r.format = IoDirectDefaultFormatter
 	r.writer = writer
@@ -89,10 +89,10 @@ func (R *ioDirectRecorder) Listen() {
 	for {
 		select {
 		case sig := <-R.chCtl: // recv control signal
-			switch sig.Type {
+			switch sig.stype {
 			case SigInit:
 				R._log("RECV INIT SIGNAL")
-				respErrChan := sig.Data.(chan error) // MAY PANIC
+				respErrChan := sig.data.(chan error) // MAY PANIC
 				R._log("  chan: %v", respErrChan)
 				R.initialise()
 				R._log("  send response..")
@@ -111,10 +111,10 @@ func (R *ioDirectRecorder) Listen() {
 
 			case SigSetErrChan:
 				R._log("RECV SET_ERR_CHAN SIGNAL")
-				R.chErr = sig.Data.(chan<- error) // MAY PANIC
+				R.chErr = sig.data.(chan<- error) // MAY PANIC
 			case SigSetDbgChan:
 				R._log("RECV SET_DBG_CHAN SIGNAL")
-				R.chDbg = sig.Data.(chan<- debugMessage) // MAY PANIC
+				R.chDbg = sig.data.(chan<- debugMessage) // MAY PANIC
 			case SigDropErrChan:
 				R._log("RECV DROP_ERR_CHAN SIGNAL")
 				//close(R.chErr)
@@ -125,7 +125,7 @@ func (R *ioDirectRecorder) Listen() {
 				R.chDbg = nil
 
 			default:
-				R._log("ERROR: received unknown signal (%s)", sig.Type)
+				R._log("ERROR: received unknown signal (%s)", sig.stype)
 				panic("xlog: received unknown signal") // PANIC
 			}
 

@@ -48,7 +48,7 @@ func TestGeneral(t *testing.T) {
 	dc <- DbgMsg(xid.NilID(), "--- TestGeneral()")
 	logger := NewLogger()
 	rec := NewIoDirectRecorder(os.Stdout)
-	rec.Intrf().ChCtl <- ControlSignal{SigSetDbgChan, dc}
+	rec.Intrf().ChCtl <- controlSignal{SigSetDbgChan, dc}
 	bundle := rec.Intrf()
 	t.Log("register recorder...")
 	if err := logger.RegisterRecorder("direct", bundle); err != nil {
@@ -90,7 +90,7 @@ func TestGeneral(t *testing.T) {
 	time.Sleep(time.Microsecond) // for the correct console output
 
 	// listening stop signal check //
-	func() { rec.Intrf().ChCtl <- ControlSignal{SigStop, nil} }()
+	func() { rec.Intrf().ChCtl <- controlSignal{SigStop, nil} }()
 	time.Sleep(time.Second) // to allow VM switch stream
 	t.Log("stop signal check...")
 	/*
@@ -106,10 +106,10 @@ func TestSyslogRecorder(t *testing.T) {
 	dc <- DbgMsg(xid.NilID(), "--- TestSyslogRecorder()")
 	logger := NewLogger()
 	rec := NewSyslogRecorder("XLOG")
-	rec.Intrf().ChCtl <- ControlSignal{SigSetDbgChan, dc}
+	rec.Intrf().ChCtl <- controlSignal{SigSetDbgChan, dc}
 	go rec.Listen()
 	defer func() { runtime.Gosched() }()
-	defer func() { rec.Intrf().ChCtl <- ControlSignal{SigStop, nil} }()
+	defer func() { rec.Intrf().ChCtl <- controlSignal{SigStop, nil} }()
 	if err := logger.RegisterRecorder("syslog", rec.Intrf()); err != nil {
 		t.Errorf("recorder register fail: syslog")
 	}
@@ -261,12 +261,12 @@ func TestRefCounter(t *testing.T) {
 	logger1 := NewLogger()
 	logger2 := NewLogger()
 	rec := NewIoDirectRecorder(os.Stdout)
-	rec.Intrf().ChCtl <- ControlSignal{SigSetDbgChan, dc}
+	rec.Intrf().ChCtl <- controlSignal{SigSetDbgChan, dc}
 	defer func() { runtime.Gosched() }()
 	go rec.Listen()
 	defer func() {
 		dc <- DbgMsg(xid.NilID(), "rec1 defer")
-		rec.Intrf().ChCtl <- ControlSignal{SigStop, nil}
+		rec.Intrf().ChCtl <- controlSignal{SigStop, nil}
 	}()
 	logger1.RegisterRecorder("direct", rec.Intrf())
 	logger2.RegisterRecorder("direct", rec.Intrf())
@@ -310,11 +310,11 @@ func TestRefCounter(t *testing.T) {
 
 	{ // for additional checks
 		rec2 := NewIoDirectRecorder(os.Stdout)
-		rec2.Intrf().ChCtl <- ControlSignal{SigSetDbgChan, dc}
+		rec2.Intrf().ChCtl <- controlSignal{SigSetDbgChan, dc}
 		go rec2.Listen()
 		defer func() {
 			dc <- DbgMsg(xid.NilID(), "rec2 defer")
-			rec2.Intrf().ChCtl <- ControlSignal{SigStop, nil}
+			rec2.Intrf().ChCtl <- controlSignal{SigStop, nil}
 		}()
 		logger2.RegisterRecorder("direct-2", rec2.Intrf())
 		t.Log("(logger 2 additional initialisation)")
@@ -407,10 +407,10 @@ func TestSeverityOrder(t *testing.T) {
 	}
 	rec := NewIoDirectRecorder(logFile).
 		OnClose(func(interface{}) { logFile.Close() })
-	rec.Intrf().ChCtl <- ControlSignal{SigSetDbgChan, dc}
+	rec.Intrf().ChCtl <- controlSignal{SigSetDbgChan, dc}
 	go rec.Listen()
 	defer func() { runtime.Gosched() }()
-	defer func() { rec.Intrf().ChCtl <- ControlSignal{SigStop, nil} }()
+	defer func() { rec.Intrf().ChCtl <- controlSignal{SigStop, nil} }()
 	if err := logger.RegisterRecorder("direct", rec.Intrf()); err != nil {
 		t.Errorf("recorder register fail: %s", err.Error())
 		return
@@ -484,10 +484,10 @@ func TestSeverityMask(t *testing.T) {
 	rec := NewIoDirectRecorder(logFile).OnClose(func(interface{}) {
 		logFile.Close()
 	})
-	rec.Intrf().ChCtl <- ControlSignal{SigSetDbgChan, dc}
+	rec.Intrf().ChCtl <- controlSignal{SigSetDbgChan, dc}
 	go rec.Listen()
 	//defer func() { runtime.Gosched() }()
-	defer func() { rec.Intrf().ChCtl <- ControlSignal{SigStop, nil} }()
+	defer func() { rec.Intrf().ChCtl <- controlSignal{SigStop, nil} }()
 	if err := logger.RegisterRecorder("direct", rec.Intrf()); err != nil {
 		t.Errorf("recorder register fail: %s", err.Error())
 		return
@@ -575,7 +575,7 @@ func TestStackTrace(t *testing.T) {
 var t_errManualInvoked = fmt.Errorf("manual invoked error")
 
 type t_debugRecorder struct {
-	chCtl chan ControlSignal
+	chCtl chan controlSignal
 	chMsg chan LogMsg
 	chErr chan error
 
@@ -589,7 +589,7 @@ type t_debugRecorder struct {
 
 func t_newDebugRecorder(iid string, outp *string) *t_debugRecorder {
 	r := new(t_debugRecorder)
-	r.chCtl = make(chan ControlSignal, 5)
+	r.chCtl = make(chan controlSignal, 5)
 	r.chMsg = make(chan LogMsg, 5)
 	r.chErr = make(chan error)
 	r.DbgOutput = outp
@@ -605,7 +605,7 @@ func (R *t_debugRecorder) Listen() {
 	for {
 		select {
 		case msg := <-R.chCtl:
-			switch msg.Type {
+			switch msg.stype {
 			case SigInit:
 				if R.DbgFailInit {
 					R.chErr <- t_errManualInvoked
