@@ -6,25 +6,32 @@ import (
 	"runtime"
 )
 
-// The error returns when recorder id can not be found in the
+// ErrWrongRecorderID returns when recorder id can not be found in the
 // recorder list or if the new id already used in the logger object.
-var ErrWrongRecorderID = errors.New("wrong recorder id")
+var ErrWrongRecorderID = errors.New("xlog: wrong recorder id")
 
-var ErrNotInitialised = errors.New("not initialised")
+// ErrNotInitialised returns when you try to write in the uninitialised logger.
+var ErrNotInitialised = errors.New("xlog: not initialised")
 
 // TODO: description
-var ErrWrongFlagValue = errors.New("wrong flag value")
+var ErrWrongFlagValue = errors.New("xlog: wrong flag value")
 
-// The error returns when user tries to write to the empty logger.
-var ErrNoRecorders = errors.New("the logger has no registered recorders")
+// ErrNoRecorders returns when user tries to write to the empty logger.
+var ErrNoRecorders = errors.New("xlog: the logger has no registered recorders")
 
-// The error returns when a user tries to write to the logger without
-// default recorders with unspecified custom recorders field (nil).
-var ErrNotWhereToWrite = errors.New("the logger has no default recorders, " +
+// ErrNotWhereToWrite returns when a user tries to write to the logger without
+// configured default recorders with unspecified custom recorders field (nil).
+var ErrNotWhereToWrite = errors.New("xlog: " +
+	"the logger has no default recorders, " +
 	"but custom recorders are not specified")
 
+/* DEPRECATED
 // The error transmits by recorder listener when it receives unknown signal.
-var ErrUnknownSignal = errors.New("unknown signal")
+var ErrUnknownSignal = errors.New("unknown signal") */
+
+// ErrInternalBumpedToNil returns in internal error report when Logger
+// found uninitialised fields. Try to call NewLogger() first.
+var errInternalBumpedToNil = "bumped to nil"
 
 // -----------------------------------------------------------------------------
 
@@ -115,41 +122,21 @@ func (br *BatchResult) SetMsg(msgFmt string, msgArgs ...interface{}) *BatchResul
 
 // -----------------------------------------------------------------------------
 
-type ieType int
-
-const (
-	ieCritical ieType = 1 << iota
-	ieUnreachable
-)
-
-func (e ieType) String() string {
-	switch e {
-	case ieCritical:
-		return "critical"
-	case ieUnreachable:
-		return "unreachable"
-	default:
-		return "unknown"
-	}
-}
-
 type InternalError struct {
 	Err  error
-	Type ieType
 	File string
 	Func string
 	Line int
 }
 
 func (e InternalError) Error() string {
-	msg := fmt.Sprintf("[%s] %s internal error: %s",
-		e.Func, e.Type.String(), e.Err.Error())
-	//msg += fmt.Sprintf("\n(%s:%d)", e.File, e.Line)
+	msg := fmt.Sprintf("xlog: [func %s] internal error: %s", e.Func, e.Err.Error())
+	//msg += fmt.Sprintf(" (%s:%d)", e.File, e.Line)
 	return msg
 }
 
-func internalError(t ieType, msgFmt string, msgArgs ...interface{}) error {
-	err := InternalError{Type: t}
+func internalError(msgFmt string, msgArgs ...interface{}) error {
+	err := InternalError{}
 	pc := make([]uintptr, 20)
 	if n := runtime.Callers(2, pc); n != 0 {
 		frames := runtime.CallersFrames(pc[:n])
@@ -159,5 +146,19 @@ func internalError(t ieType, msgFmt string, msgArgs ...interface{}) error {
 		err.Line = frame.Line
 	}
 	err.Err = fmt.Errorf(msgFmt, msgArgs...)
+	return err
+}
+
+func internalErrorPredef(e error) error {
+	err := InternalError{}
+	pc := make([]uintptr, 20)
+	if n := runtime.Callers(2, pc); n != 0 {
+		frames := runtime.CallersFrames(pc[:n])
+		frame, _ := frames.Next()
+		err.File = frame.File
+		err.Func = frame.Function
+		err.Line = frame.Line
+	}
+	err.Err = e
 	return err
 }

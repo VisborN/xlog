@@ -235,7 +235,7 @@ func (R *syslogRecorder) write(msg LogMsg) error {
 		case syslog.LOG_DEBUG:
 			R.logger.Debug(msgData)
 		default:
-			return internalError(ieUnreachable, "unexpected priority value")
+			return internalError("unexpected priority value (unreachable)")
 		}
 	} else {
 		return ErrWrongFlagValue
