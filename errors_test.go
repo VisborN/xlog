@@ -9,7 +9,7 @@ func TestBatchResult(t *testing.T) {
 	t.SkipNow()
 
 	r := BatchResult{}
-	if r.Errors() != nil {
+	if r.GetErrors() != nil {
 		t.Errorf(".Errors() returns non-nil value although there are no errors")
 	}
 	if r.Error() != "successful, no errors" {
@@ -17,19 +17,19 @@ func TestBatchResult(t *testing.T) {
 	}
 
 	r.Fail("rec1", errors.New("some error 1"))
-	if len(r.Errors()) != 1 {
+	if len(r.GetErrors()) != 1 {
 		t.Errorf(".Fial() does not add an error")
 	}
 	r.OK("rec1")
-	if len(r.ListOfSuccessful()) != 1 {
+	if len(r.GetSuccessful()) != 1 {
 		t.Errorf(".OK does not add items to list\n%v", r.successful)
 	}
-	if r.Errors() != nil { // check list drop
+	if r.GetErrors() != nil { // check list drop
 		t.Errorf(".Errors() returns non-nil value after reset")
 	}
 
 	r.Fail("rec1", errors.New("some error 1"))
-	if len(r.ListOfSuccessful()) != 0 { // check list drop
+	if len(r.GetSuccessful()) != 0 { // check list drop
 		t.Errorf(".ListOfsuccessful() returns value after reset")
 	}
 	r.Fail("rec2", errors.New("some error 2"))

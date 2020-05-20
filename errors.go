@@ -28,6 +28,10 @@ var ErrUnknownSignal = errors.New("unknown signal")
 
 // -----------------------------------------------------------------------------
 
+// BatchResult using to accumulate statuses (success and failed) of several
+// operations and used as kinda a partial error when some operations are
+// succeeded and some not. It's used in handling lists of recorders, like
+// initialisation ops.
 type BatchResult struct {
 	errors     map[RecorderID]error
 	successful []RecorderID
@@ -50,7 +54,7 @@ func (br BatchResult) Error() string {
 	return br.errMessage + rlist
 }
 
-func (br BatchResult) Errors() map[RecorderID]error {
+func (br BatchResult) GetErrors() map[RecorderID]error {
 	if len(br.errors) == 0 {
 		// cause by calling .Fail().Ok()
 		// we can get a non-nil map
@@ -59,7 +63,7 @@ func (br BatchResult) Errors() map[RecorderID]error {
 	return br.errors
 }
 
-func (br BatchResult) ListOfSuccessful() []RecorderID {
+func (br BatchResult) GetSuccessful() []RecorderID {
 	return br.successful
 }
 
@@ -68,15 +72,18 @@ func (br *BatchResult) Fail(rec RecorderID, err error) *BatchResult {
 		br.errors = make(map[RecorderID]error)
 	}
 	br.errors[rec] = err
-	// additional check
+
+	// check success list
 	for i, recID := range br.successful {
 		if recID == rec {
-			// delete record
+			// delete record from success list
 			br.successful[i] = br.successful[len(br.successful)-1]
 			br.successful[len(br.successful)-1] = ""
 			br.successful = br.successful[:len(br.successful)-1]
+			break // no duplicates possible
 		}
 	}
+
 	return br
 }
 
@@ -89,11 +96,12 @@ func (br *BatchResult) OK(rec RecorderID) *BatchResult {
 	}
 
 	br.successful = append(br.successful, rec)
-	// additional check
+
+	// check error list
 	for recID, _ := range br.errors {
 		if recID == rec {
 			delete(br.errors, rec)
-			break
+			break // no duplicates possible
 		}
 	}
 

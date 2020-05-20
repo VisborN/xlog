@@ -443,7 +443,7 @@ func (L *Logger) Initialise() error {
 	}
 
 	//=== LOGIC AT PARTIAL INITIALISATION ===//
-	if br.Errors() != nil {
+	if br.GetErrors() != nil {
 		// all recorders should be initialised for success state
 		return br
 	} else {
@@ -501,7 +501,7 @@ func (L *Logger) DefaultsSet(recorders []RecorderID) error {
 
 	L.defaults = recorders
 
-	if br.Errors() != nil {
+	if br.GetErrors() != nil {
 		return br
 	}
 	return nil
@@ -546,7 +546,7 @@ main_iter:
 		br.OK(recID)
 	}
 
-	if br.Errors() != nil {
+	if br.GetErrors() != nil {
 		return br
 	}
 	return nil
@@ -590,7 +590,7 @@ func (L *Logger) DefaultsRemove(recorders []RecorderID) error {
 		}
 	}
 
-	if br.Errors() != nil {
+	if br.GetErrors() != nil {
 		return br
 	}
 	return nil
@@ -834,7 +834,7 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 	}
 
 	// write errors ain't possible currently
-	//if br.Errors() != nil { return br }
+	//if br.GetErrors() != nil { return br }
 	return nil
 }
 
