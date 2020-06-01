@@ -274,20 +274,22 @@ func (L *Logger) NumberOfRecorders() int {
 	return len(L.recorders)
 }
 
-// The same as RegisterRecorderEx, but adds recorder to defaults anyways.
-func (L *Logger) RegisterRecorder(id RecorderID, intrf RecorderInterface) error {
-	return L.RegisterRecorderEx(id, intrf, true)
-}
-
 // RegisterRecorder registers the recorder in the logger with the given id.
-// asDefault parameter says whether the need to set it as default recorder.
-func (L *Logger) RegisterRecorderEx(id RecorderID, intrf RecorderInterface, asDefault bool) error {
-	// TODO: do we still need this?
-	// This function should configure all related fields. Other functions
-	// will return an error or cause panic if they meet a wrong logger data.
+// This function receives optional parameter 'asDefault', which says whether
+// the need to set it as default recorder. If the optional parameter is not
+// specified, it will have a true value.
+func (L *Logger) RegisterRecorder(
+	id RecorderID,
+	intrf RecorderInterface,
+	asDefault ...bool,
+) error {
 
 	if CfgGlobalDisable.Get() {
 		return nil
+	}
+
+	if len(asDefault) == 0 {
+		asDefault = append(asDefault, true)
 	}
 
 	L.Lock()
@@ -318,21 +320,20 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, intrf RecorderInterface, asDe
 	}
 	L.severityMasks[id] = SeverityAll // working with all severities by default
 
-	// check for duplicates
-	// TODO: a bit thick check, remove ?
+	/* UNREACHABLE
+	// check defaults for duplicates
 	for i, recID := range L.defaults {
 		if recID == id {
 			// if id not found in recorders, defaults can't contain it
-
-			//return internalError(ieUnreachable, ".defaults: found unexpected id")
 			L.defaults[i] = L.defaults[len(L.defaults)-1]
 			L.defaults[len(L.defaults)-1] = RecorderID("")
 			L.defaults = L.defaults[:len(L.defaults)-1]
 		}
 	}
+	*/
 
 	// set as default if necessary
-	if asDefault {
+	if asDefault[0] {
 		L.defaults = append(L.defaults, id)
 	}
 
@@ -346,6 +347,7 @@ func (L *Logger) RegisterRecorderEx(id RecorderID, intrf RecorderInterface, asDe
 	return nil
 }
 
+// UnregisterRecorder unbinds specified recorder from the logger (send a close signal).
 func (L *Logger) UnregisterRecorder(id RecorderID) error {
 	if CfgGlobalDisable.Get() {
 		return nil
