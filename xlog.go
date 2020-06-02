@@ -384,25 +384,25 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 		L.RUnlock()
 		return ErrNoRecorders
 	}
-	if L.recordersInit == nil {
-		//panic("xlog: bumped to nil")
-		L.RUnlock()
-		return internalError(errInternalBumpedToNil)
-	}
 
 	// close recorder if necessary
 	if rc, exist := L.recorders[id]; !exist {
 		L.RUnlock()
 		return ErrWrongRecorderID
 	} else {
-		if initialised, exist := L.recordersInit[id]; !exist {
-			L.RUnlock()
-			//return internalError(".recordersInit -> missing valid id (unreachable)")
-			panic("xlog: missing valid id (unreachable)")
-		} else {
-			if initialised {
-				rc.ChCtl <- SignalClose()
+		if L.recordersInit != nil {
+			if initialised, exist := L.recordersInit[id]; !exist {
+				// UNREACHABLE //
+				L.RUnlock()
+				return internalCritical("xlog: missing valid id (.recordersInit)") // PANIC
+			} else {
+				if initialised {
+					rc.ChCtl <- SignalClose()
+				}
 			}
+		} else {
+			L.RUnlock()
+			return internalError(errMsgBumpedToNil)
 		}
 	}
 
@@ -447,9 +447,8 @@ func (L *Logger) Initialise() error {
 	if len(L.recorders) == 0 {
 		return ErrNoRecorders
 	}
-	if L.recorders == nil || L.severityMasks == nil || L.severityOrder == nil {
-		//panic("xlog: bumped to nil")
-		return internalError(errInternalBumpedToNil)
+	if L.severityMasks == nil || L.severityOrder == nil {
+		return internalError(errMsgBumpedToNil)
 	}
 
 	br := BatchResult{}
@@ -474,9 +473,11 @@ func (L *Logger) Initialise() error {
 				}
 			}
 		} else {
+			// UNREACHABLE //
+
 			// recorder is registered but id is missing in states map
 			//br.Fail(id, internalError(".recordersInit -> missing valid id (unreachable)"))
-			panic("xlog: missing valid id (unreachable)")
+			return internalCritical("xlog: missing valid id (.recordersInit)") // PANIC
 		}
 	}
 
@@ -663,8 +664,7 @@ func (L *Logger) ChangeSeverityOrder(
 	}
 	if L.severityOrder == nil {
 		L.RUnlock()
-		//panic("xlog: bumped to nil")
-		return internalError(errInternalBumpedToNil)
+		return internalError(errMsgBumpedToNil)
 	}
 
 	// DISABLED CURRENTLY (TODO)
@@ -685,18 +685,16 @@ func (L *Logger) ChangeSeverityOrder(
 	}
 
 	orderlist, exist := L.severityOrder[recorder]
-	if !exist {
+	if !exist { // UNREACHABLE //
 		L.RUnlock()
-		//return internalError(".severityOrder -> missing valid id (unreachable)")
-		panic("xlog: missing valid id (unreachable)")
+		return internalCritical("xlog: missing valid id (.severityOrder)") // PANIC
 	}
 	var src *list.Element
 	var trg *list.Element
 	for e := orderlist.Front(); e != nil; e = e.Next() {
 		if sev, ok := e.Value.(MsgFlagT); !ok {
 			L.RUnlock()
-			//return internalError("unexpected value type (unreachable)")
-			panic("xlog: unexpected value type (unreachable)")
+			return internalCritical("xlog: unexpected type") // PANIC
 		} else {
 			if sev == srcFlag {
 				src = e
@@ -715,13 +713,13 @@ func (L *Logger) ChangeSeverityOrder(
 
 	if src == nil {
 		L.RUnlock()
-		//return internalError("can't find src flag <%012b> (unreachable)", srcFlag)
-		panic("xlog: can't find src flag (unreachable)")
+		//return internalError("can't find flag <%012b> (.severityOrder)", srcFlag)
+		return internalCritical("xlog: can't find flag (.seveirtyOrder)") // PANIC
 	}
 	if trg == nil {
 		L.RUnlock()
-		//return internalError("can't find trg flag <%012b> (unreachable)", trgFlag)
-		panic("xlog: can't find trg flag (unreachable)")
+		//return internalError("can't find trg flag <%012b> (.severityOrder)", trgFlag)
+		return internalCritical("xlog: can't find flag (.severityOrder)") // PANIC
 	}
 
 	L.RUnlock()
@@ -751,8 +749,7 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags MsgFlagT) error {
 	defer L.Unlock()
 
 	if L.severityMasks == nil {
-		//panic("xlog: bumped to nil")
-		return internalError(errInternalBumpedToNil)
+		return internalError(errMsgBumpedToNil)
 	}
 	if len(L.recorders) == 0 {
 		return ErrNoRecorders
@@ -763,8 +760,8 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags MsgFlagT) error {
 		if _, exist := L.recorders[recorder]; !exist {
 			return ErrWrongRecorderID
 		} else {
-			//return internalError(".severityMasks -> missing valid id (unreachable)")
-			panic("xlog: missing valid id (unreachable)")
+			// UNREACHABLE //
+			return internalCritical("xlog: missing valid id (.severityMasks)") // PANIC
 		}
 		_ = sevMask // THAT'S COMPLETELY STUPID, GOLANG
 	} else {
@@ -805,12 +802,11 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 	if !L.initialised {
 		return ErrNotInitialised
 	}
-	if L.severityMasks == nil || L.severityOrder == nil {
-		//panic("xlog: bumped to nil")
-		return internalError(errInternalBumpedToNil)
-	}
 	if len(L.recorders) == 0 {
 		return ErrNoRecorders
+	}
+	if L.severityMasks == nil || L.severityOrder == nil {
+		return internalError(errMsgBumpedToNil)
 	}
 	if len(L.defaults) == 0 && len(recorders) == 0 {
 		// CAREFULLY! DON'T DELETE THAT
@@ -887,8 +883,9 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 				// NO ERROR CHECK
 			}
 		} else {
+			// UNREACHABLE //
 			//br.Fail(recID, internalError(".severityMasks -> missing valid id (unreachable)"))
-			panic("xlog: missing valid id (unreachable)")
+			return internalCritical("xlog: missing valid id (.severityMasks)") // PANIC
 		}
 	}
 
@@ -913,10 +910,9 @@ func (L *Logger) severityProtector(orderlist *list.List, flags *MsgFlagT) error 
 				return nil
 			}
 		} else {
-			//return internalError("type is invalid (unreachable)")
-			panic("xlog: type is invalid")
+			return internalCritical("xlog: unexpected type") // PANIC
 		}
 	}
-	//return internalError("can't find severity flag in orderlist <%012b> (unreachable)", *flags)
-	panic("xlog: can't find severity flag in orderlist")
+	//return internalError("can't find severity flag in orderlist <%012b>", *flags)
+	return internalCritical("xlog: can't find severity flag (orderlist)") // PANIC
 }

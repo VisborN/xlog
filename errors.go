@@ -32,9 +32,12 @@ var ErrNotWhereToWrite = errors.New("xlog: " +
 // The error transmits by recorder listener when it receives unknown signal.
 var ErrUnknownSignal = errors.New("unknown signal") */
 
-// ErrInternalBumpedToNil returns in internal error report when Logger
+// errMsgBumpedToNil returns in internal error report when Logger
 // found uninitialised fields. Try to call NewLogger() first.
-var errInternalBumpedToNil = "bumped to nil"
+var errMsgBumpedToNil = "bumped to nil"
+
+// additional return protection (always unreachable currently)
+var errBLOP = errors.New("THIS CODE WAS SUPPOSED TO PANIC")
 
 // it used for tests, shouldn't be exported or documented
 var _ErrFalseInit error = errors.New("[OK] false initialisation")
@@ -128,6 +131,9 @@ func (br *BatchResult) SetMsg(msgFmt string, msgArgs ...interface{}) *BatchResul
 
 // -----------------------------------------------------------------------------
 
+// This error used for critical situations caused by wrong package usage
+// (by user). The operations cannot be done with the wrong data, may cause
+// data damage or panics (in this function call).
 type InternalError struct {
 	Err  error
 	File string
@@ -141,6 +147,8 @@ func (e InternalError) Error() string {
 	return msg
 }
 
+// This function returns a InternalError, see InternalError type
+// description for more info. You should call return after this func.
 func internalError(msgFmt string, msgArgs ...interface{}) error {
 	err := InternalError{}
 	pc := make([]uintptr, 20)
@@ -155,6 +163,8 @@ func internalError(msgFmt string, msgArgs ...interface{}) error {
 	return err
 }
 
+/*
+// The same as internalError, but receives a predefined error.
 func internalErrorPredef(e error) error {
 	err := InternalError{}
 	pc := make([]uintptr, 20)
@@ -167,4 +177,14 @@ func internalErrorPredef(e error) error {
 	}
 	err.Err = e
 	return err
+}
+*/
+
+// This function used for critical and unreachable errors. It should
+// cause panic because it represents an issue in xlog code and further
+// work is not possible in most cases.
+func internalCritical(msg string) error {
+	panic(msg)
+
+	return errBLOP // unreachable
 }

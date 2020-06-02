@@ -156,7 +156,8 @@ func (R *syslogRecorder) Listen() {
 
 			default:
 				R._log("ERROR: received unknown signal (%s)", sig.stype)
-				panic("xlog: received unknown signal") // PANIC
+				// DO NOTHING
+				//panic("xlog: received unknown signal")
 			}
 
 		case msg := <-R.chMsg: // write log message

@@ -1,6 +1,7 @@
 package xlog
 
 import (
+	"container/list"
 	"os"
 	"testing"
 )
@@ -153,6 +154,34 @@ func TestLoggerRegistering(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("UnregisterRecorder@internal", func(t *testing.T) {
+		var l0 Logger
+		l0.recorders = make(map[RecorderID]RecorderInterface)
+		l0.recorders[recID] = r.Intrf()
+
+		if e := l0.UnregisterRecorder(recID); e == nil {
+			t.Error("UnregisterRecorder() return nil, error expected")
+		} else {
+			if _, ok := e.(InternalError); !ok {
+				t.Errorf("unexpected error\n%v", e)
+			}
+		}
+	})
+
+	t.Run("UnregisterRecorder@panic", func(t *testing.T) {
+
+		t.SkipNow()
+
+		var l0 Logger
+		// create condition for panic
+		l0.recorders = make(map[RecorderID]RecorderInterface)
+		l0.recordersInit = make(map[RecorderID]bool)
+		l0.recorders[recID] = r.Intrf()
+
+		t.Log("should panics")
+		_ = l0.UnregisterRecorder(recID)
+	})
 }
 
 // UNSAFE, use in tests only
@@ -258,26 +287,35 @@ func TestLoggerInitialisation(t *testing.T) {
 		}
 	})
 
-	/* TODO (panic_cfg)
-	t.Run("Initialise@panic", func(t *testing.T) {
+	t.Run("Initialise@internal", func(t *testing.T) {
 		var l0 Logger
+		// just create conditions for the error
+		l0.recorders = make(map[RecorderID]RecorderInterface)
+		l0.recorders[rec1ID] = r1.Intrf()
+		l0.initialised = false
 
-		e := l0.RegisterRecorder(rec1ID, r1.Intrf()) // to prevent ErrNoRecorders case
-		if e != nil {
-			t.Fatalf("RegisterRecorder() return error\n%v", e)
-		}
-
-		// INSERT -> prevent_panic
-
-		e = l0.Initialise()
-		if e == nil {
-			t.Error("Initialise() return nil")
+		if e := l0.Initialise(); e == nil {
+			t.Error("Initialise() return nil, error expected")
 		} else {
-
-			// TODO: check
-
+			//t.Logf("error >> %v", e.Error())
+			if _, ok := e.(InternalError); !ok {
+				t.Errorf("unexpected error\n%v", e)
+			}
 		}
 	})
-	*/
 
+	t.Run("Initialise@panic", func(t *testing.T) {
+
+		t.SkipNow()
+
+		var l0 Logger
+		// create conditions for panic
+		l0.recorders = make(map[RecorderID]RecorderInterface)
+		l0.recorders[rec1ID] = r1.Intrf()
+		l0.severityMasks = make(map[RecorderID]MsgFlagT)
+		l0.severityOrder = make(map[RecorderID]*list.List)
+
+		t.Log("should panics")
+		_ = l0.Initialise()
+	})
 }
