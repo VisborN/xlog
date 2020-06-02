@@ -306,6 +306,9 @@ func (L *Logger) RegisterRecorder(
 	if CfgGlobalDisable.Get() {
 		return nil
 	}
+	if id == RecorderID("") {
+		return ErrWrongParameter
+	}
 
 	if len(asDefault) == 0 {
 		asDefault = append(asDefault, true)
@@ -370,6 +373,9 @@ func (L *Logger) RegisterRecorder(
 func (L *Logger) UnregisterRecorder(id RecorderID) error {
 	if CfgGlobalDisable.Get() {
 		return nil
+	}
+	if id == RecorderID("") {
+		return ErrWrongParameter
 	}
 
 	L.RLock()
@@ -641,6 +647,9 @@ func (L *Logger) ChangeSeverityOrder(
 	if CfgGlobalDisable.Get() {
 		return nil
 	}
+	if recorder == RecorderID("") {
+		return ErrWrongParameter
+	}
 
 	L.RLock()
 
@@ -734,6 +743,9 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags MsgFlagT) error {
 	if CfgGlobalDisable.Get() {
 		return nil
 	}
+	if recorder == RecorderID("") {
+		return ErrWrongParameter
+	}
 
 	L.Lock()
 	defer L.Unlock()
@@ -756,7 +768,7 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags MsgFlagT) error {
 		}
 		_ = sevMask // THAT'S COMPLETELY STUPID, GOLANG
 	} else {
-		// zero is allowed (recorder blocked)
+		// zero is allowed (recorder blocked) //
 		L.severityMasks[recorder] = flags &^ SeverityShadowMask
 	}
 
@@ -813,6 +825,7 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 	if len(recorders) > 0 {
 		// if custom recorders specified, check em for valid
 		for i, recID := range recorders {
+			// RecorderID("") is not possible //
 			if _, exist := L.recorders[recID]; !exist {
 				br.Fail(recID, ErrWrongRecorderID)
 				// remove it from the list

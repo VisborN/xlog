@@ -70,9 +70,6 @@ func TestLoggerRegistering(t *testing.T) {
 	})
 
 	t.Run("RegisterRecorder@Empty", func(t *testing.T) {
-
-		t.SkipNow()
-
 		e := l.RegisterRecorder(emptyRecorderID, r.Intrf())
 		//t.Cleanup(func() {l.UnregisterRecorder(emptyRecorderID)})
 
@@ -81,7 +78,7 @@ func TestLoggerRegistering(t *testing.T) {
 		if e == nil {
 			t.Error("RegisterRecorder() return nil, error expected")
 		} else {
-			if e != nil { // TODO
+			if e != ErrWrongParameter {
 				t.Errorf("unexpected error\n%v", e)
 			}
 		}
@@ -148,13 +145,10 @@ func TestLoggerRegistering(t *testing.T) {
 	})
 
 	t.Run("UnregisterRecorder@Empty", func(t *testing.T) {
-
-		t.SkipNow()
-
 		if e := l.UnregisterRecorder(emptyRecorderID); e == nil {
 			t.Error("UnregisterRecorder() return nil, error expected")
 		} else {
-			if e != nil { // TODO
+			if e != ErrWrongParameter {
 				t.Errorf("unexpected error\n%v", e)
 			}
 		}

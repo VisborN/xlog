@@ -16,6 +16,9 @@ var ErrNotInitialised = errors.New("xlog: not initialised")
 // TODO: description
 var ErrWrongFlagValue = errors.New("xlog: wrong flag value")
 
+// ErrWrongParameter returns when passed parameter is incorrect e.g. RecorderID("").
+var ErrWrongParameter = errors.New("xlog: wrong parameter")
+
 // ErrNoRecorders returns when user tries to write to the empty logger.
 var ErrNoRecorders = errors.New("xlog: the logger has no registered recorders")
 
