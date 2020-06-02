@@ -356,18 +356,22 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 	L.RLock()
 
 	if len(L.recorders) == 0 {
+		L.RUnlock()
 		return ErrNoRecorders
 	}
 	if L.recordersInit == nil {
 		//panic("xlog: bumped to nil")
+		L.RUnlock()
 		return internalError(errInternalBumpedToNil)
 	}
 
 	// close recorder if necessary
 	if rc, exist := L.recorders[id]; !exist {
+		L.RUnlock()
 		return ErrWrongRecorderID
 	} else {
 		if initialised, exist := L.recordersInit[id]; !exist {
+			L.RUnlock()
 			//return internalError(".recordersInit -> missing valid id (unreachable)")
 			panic("xlog: missing valid id (unreachable)")
 		} else {
@@ -617,12 +621,15 @@ func (L *Logger) ChangeSeverityOrder(
 	L.RLock()
 
 	if len(L.recorders) == 0 {
+		L.RUnlock()
 		return ErrNoRecorders
 	}
 	if _, exist := L.recorders[recorder]; !exist {
+		L.RUnlock()
 		return ErrWrongRecorderID
 	}
 	if L.severityOrder == nil {
+		L.RUnlock()
 		//panic("xlog: bumped to nil")
 		return internalError(errInternalBumpedToNil)
 	}
@@ -632,17 +639,21 @@ func (L *Logger) ChangeSeverityOrder(
 	srcFlag = srcFlag &^ SeverityShadowMask
 	trgFlag = trgFlag &^ SeverityShadowMask
 	if srcFlag == 0 {
+		L.RUnlock()
 		return ErrWrongFlagValue
 	}
 	if trgFlag == 0 {
+		L.RUnlock()
 		return ErrWrongFlagValue
 	}
 	if srcFlag == trgFlag {
+		L.RUnlock()
 		return ErrWrongFlagValue
 	}
 
 	orderlist, exist := L.severityOrder[recorder]
 	if !exist {
+		L.RUnlock()
 		//return internalError(".severityOrder -> missing valid id (unreachable)")
 		panic("xlog: missing valid id (unreachable)")
 	}
@@ -650,6 +661,7 @@ func (L *Logger) ChangeSeverityOrder(
 	var trg *list.Element
 	for e := orderlist.Front(); e != nil; e = e.Next() {
 		if sev, ok := e.Value.(MsgFlagT); !ok {
+			L.RUnlock()
 			//return internalError("unexpected value type (unreachable)")
 			panic("xlog: unexpected value type (unreachable)")
 		} else {
@@ -669,10 +681,12 @@ func (L *Logger) ChangeSeverityOrder(
 	}
 
 	if src == nil {
+		L.RUnlock()
 		//return internalError("can't find src flag <%012b> (unreachable)", srcFlag)
 		panic("xlog: can't find src flag (unreachable)")
 	}
 	if trg == nil {
+		L.RUnlock()
 		//return internalError("can't find trg flag <%012b> (unreachable)", trgFlag)
 		panic("xlog: can't find trg flag (unreachable)")
 	}
