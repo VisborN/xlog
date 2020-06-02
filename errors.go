@@ -33,6 +33,9 @@ var ErrUnknownSignal = errors.New("unknown signal") */
 // found uninitialised fields. Try to call NewLogger() first.
 var errInternalBumpedToNil = "bumped to nil"
 
+// it used for tests, shouldn't be exported or documented
+var _ErrFalseInit error = errors.New("[OK] false initialisation")
+
 // -----------------------------------------------------------------------------
 
 // BatchResult using to accumulate statuses (success and failed) of several

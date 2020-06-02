@@ -2,16 +2,16 @@ package xlog
 
 // This tool can be used to control recorders and logger state and debug concurrency
 // and synchronisation errors. Pass channel returned by debugLogger.Chan() function
-// to the recorder as debug channel to collect debugging data.
+// to the recorder as debug channel to collect debugging data. It also can be useful
+// while building custom recorders.
 
 // Built-in recorders will write to debug channel automatically if it passed. You
 // can also write user messages to it: d.Chan() <- DbgMsg(xid.NilID(), "my message")
-// To stop debug listener just close the channel: close(d.Chan())
+// To stop debug listener just close the channel: close(d.Chan()).
 
-// BE CAREFUL WITH CHANNEL CLOSING: it can be closed only after all ops ended.
-// Another way you can send SigDropDbgChan for all recorders to disconnect
-// debug channel which allows the recorder to continue normal work without
-// debugging.
+// BE CAREFUL WITH CHANNEL CLOSING: If debug listener connected to the several recorders,
+// channel closing may cause panic. YOU should ensure that all recorders dropped debug
+// channel by sending SigDropDbgChan signal before close it.
 
 import (
 	"fmt"
@@ -54,7 +54,7 @@ func NewDebugLogger(writer io.Writer) *debugLogger {
 }
 
 func (D *debugLogger) Close() {
-	close(D.channel) // ATTENTION
+	close(D.channel)
 	D.channel = nil
 }
 

@@ -256,6 +256,25 @@ type Logger struct {
 
 	// determines the severity order for each recorder
 	severityOrder map[RecorderID]*list.List
+
+	// it used for tests, shouldn't be exported or documented
+	_falseInit _recList
+}
+
+// it used for tests, shouldn't be exported or documented
+type _recList []RecorderID
+
+func (r *_recList) add(rec RecorderID) {
+	*r = append(*r, rec)
+}
+
+func (r *_recList) check(rec RecorderID) bool {
+	for _, v := range *r {
+		if v == rec {
+			return true
+		}
+	}
+	return false
 }
 
 // NewLogger allocates and returns a new logger.
@@ -440,8 +459,13 @@ func (L *Logger) Initialise() error {
 			if err != nil {
 				br.Fail(id, err)
 			} else {
-				L.recordersInit[id] = true
-				br.OK(id)
+				if L._falseInit.check(id) {
+					// DEBUG, used for tests
+					br.Fail(id, _ErrFalseInit)
+				} else { // REGULAR
+					L.recordersInit[id] = true
+					br.OK(id)
+				}
 			}
 		} else {
 			// recorder is registered but id is missing in states map
