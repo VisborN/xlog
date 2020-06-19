@@ -846,6 +846,9 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 	if CfgGlobalDisable.Get() {
 		return nil
 	}
+	if msg == nil {
+		return ErrWrongParameter
+	}
 
 	L.RLock()
 	defer L.RUnlock()

@@ -754,6 +754,9 @@ func TestWriteFunc(t *testing.T) {
 
 	t.Run("WriteMsg@partial@WrongRec", func(t *testing.T) {
 		defer runtime.Gosched() // GOSCHED
+
+		/* The WriteMsg() should ignore wrong recorders (currently setting).
+
 		if e := l.WriteMsg([]RecorderID{rec1ID, "wrong-rec"}, NewLogMsg()); e == nil {
 			t.Error("WriteMsg()" + emsgErrExpected)
 		} else {
@@ -762,16 +765,13 @@ func TestWriteFunc(t *testing.T) {
 			} else if showAdditionalInfo {
 				t.Logf(lmsgErrOK, err)
 			}
+		} */
+		if e := l.WriteMsg([]RecorderID{rec1ID, "wrong-rec"}, NewLogMsg()); e != nil {
+			t.Errorf("WriteMsg() return error\n%s", e.Error())
 		}
 	})
 
 	t.Run("WriteMsg@NilMsg", func(t *testing.T) {
-
-		// --------------------
-		t.Log("SKIP UNTIL FIX")
-		t.SkipNow()
-		// --------------------
-
 		if e := l.WriteMsg(nil, nil); e == nil {
 			t.Error("WriteMsg()" + emsgErrExpected)
 		} else if e != ErrWrongParameter {
