@@ -379,6 +379,53 @@ func TestLoggerInitialisation(t *testing.T) {
 	})
 }
 
+func TestLoggerAutoStartListening(t *testing.T) {
+	l := NewLogger()
+	r1 := NewIoDirectRecorder(os.Stdout)
+	r2 := NewIoDirectRecorder(os.Stdout)
+	var rec1ID RecorderID = "rec-1"
+	var rec2ID RecorderID = "rec-2"
+	go r1.Listen() // only one
+	defer func() { r1.Intrf().ChCtl <- SignalStop() }()
+
+	var rlist ListOfRecorders
+	rlist.Add(r1)
+	rlist.Add(r2)
+
+	if e := l.RegisterRecorder(rec1ID, r1.Intrf()); e != nil {
+		t.Fatalf("RegisterRecorder() return error\n%s", e.Error())
+	}
+	if e := l.RegisterRecorder(rec2ID, r2.Intrf()); e != nil {
+		t.Fatalf("RegisterRecorder() return error\n%s", e.Error())
+	}
+
+	t.Run("AutoStartListening=OFF", func(tt *testing.T) {
+		CfgAutoStartListening.Set(false)
+		defer func() { l.recordersInit[rec1ID] = false }()
+		if e := l.Initialise(rlist); e == nil {
+			tt.Error("Initialise()" + emsgErrExpected)
+		} else {
+			if _, ok := e.(BatchResult); !ok {
+				tt.Errorf(emsgUnexpectedError, e)
+			} else if showAdditionalInfo {
+				tt.Logf(lmsgErrOK, e.Error())
+			}
+		}
+	})
+
+	t.Run("AutoStartListening=ON", func(tt *testing.T) {
+		CfgAutoStartListening.Set(true)
+		if e := l.Initialise(rlist); e != nil {
+			tt.Errorf("Initialise() return error\n%s", e.Error())
+		} else {
+			t.Cleanup(func() { r2.Intrf().ChCtl <- SignalStop() })
+		}
+		if !l.initialised {
+			tt.Errorf(".initialised wrong value (%v)", l.initialised)
+		}
+	})
+}
+
 func TestDefaults(t *testing.T) {
 	l := NewLogger()
 	var rec1ID RecorderID = "rec-1"

@@ -3,6 +3,7 @@ package xlog
 import (
 	"container/list"
 	"fmt"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -110,6 +111,28 @@ type ssDirection bool
 const Before ssDirection = true
 const After ssDirection = false
 
+type ListOfRecorders []LogRecorder
+
+func (list *ListOfRecorders) Add(rec LogRecorder) {
+	if rec != nil {
+		*list = append(*list, rec)
+	}
+}
+
+func (list ListOfRecorders) FindByID(id xid.ID) LogRecorder {
+	for i, rec := range list {
+		if rec == nil {
+			list[i] = list[len(list)-1]
+			list[len(list)-1] = nil
+			list = list[:len(list)-1]
+		}
+		if rec.GetID().Compare(id) == 0 {
+			return rec
+		}
+	}
+	return nil
+}
+
 // ---------------------------------------- CONFIG
 
 type bool_s struct {
@@ -130,8 +153,7 @@ func (m *bool_s) Get() bool {
 }
 
 var CfgGlobalDisable bool_s = bool_s{v: false}
-
-//var CfgPreventPanic bool_s = bools_s{v: false}
+var CfgAutoStartListening bool_s = bool_s{v: true}
 
 // -----------------------------------------------------------------------------
 
@@ -227,13 +249,14 @@ type LogRecorder interface {
 	Listen()
 	IsListening() bool
 	Intrf() RecorderInterface
-	getID() xid.ID
+	GetID() xid.ID
 }
 
 // RecorderInterface structure represents recorder interface channels.
 type RecorderInterface struct {
 	ChCtl chan<- controlSignal
 	ChMsg chan<- LogMsg
+	id    xid.ID
 }
 
 type RecorderID string
@@ -442,7 +465,7 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 }
 
 // Initialise invokes initialisation functions of each registered recorder.
-func (L *Logger) Initialise() error {
+func (L *Logger) Initialise(objects ...ListOfRecorders) error {
 	if CfgGlobalDisable.Get() {
 		return nil
 	}
@@ -462,10 +485,28 @@ func (L *Logger) Initialise() error {
 
 	br := BatchResult{}
 	br.SetMsg("some of the given recorders are not initialised")
+main_cycle:
 	for id, rec := range L.recorders {
 		if initialised, exist := L.recordersInit[id]; exist {
 			if initialised {
 				continue
+			}
+			if len(objects) != 0 {
+				for _, list := range objects {
+					recorderObject := list.FindByID(rec.id)
+					if recorderObject != nil {
+						if !recorderObject.IsListening() {
+							if CfgAutoStartListening.Get() {
+								go recorderObject.Listen()
+								runtime.Gosched()
+								break
+							} else {
+								br.Fail(id, ErrNotListening)
+								continue main_cycle
+							}
+						}
+					}
+				}
 			}
 			chErr := make(chan error)
 			rec.ChCtl <- SignalInit(chErr)

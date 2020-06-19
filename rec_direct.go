@@ -9,6 +9,8 @@ import (
 	"github.com/rs/xid"
 )
 
+var _ LogRecorder = &ioDirectRecorder{}
+
 type rqRecorderSignal string
 
 type ioDirectRecorder struct {
@@ -55,11 +57,11 @@ func SpawnIoDirectRecorder(
 
 // Intrf returns recorder's interface channels.
 func (R *ioDirectRecorder) Intrf() RecorderInterface {
-	return RecorderInterface{R.chCtl, R.chMsg}
+	return RecorderInterface{R.chCtl, R.chMsg, R.id}
 }
 
-// getID returns recorder's xid.
-func (R *ioDirectRecorder) getID() xid.ID {
+// GetID returns recorder's xid.
+func (R *ioDirectRecorder) GetID() xid.ID {
 	return R.id
 }
 

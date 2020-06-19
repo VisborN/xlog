@@ -9,6 +9,8 @@ import (
 	"github.com/rs/xid"
 )
 
+var _ LogRecorder = &syslogRecorder{}
+
 // TODO
 var errWrongPriority = errors.New("wrong priority value")
 
@@ -65,11 +67,11 @@ func SpawnSyslogRecorder(prefix string) *syslogRecorder {
 
 // Intrf returns recorder's interface channels.
 func (R *syslogRecorder) Intrf() RecorderInterface {
-	return RecorderInterface{R.chCtl, R.chMsg}
+	return RecorderInterface{R.chCtl, R.chMsg, R.id}
 }
 
-// getID reeturns recorder's xid.
-func (R *syslogRecorder) getID() xid.ID {
+// GetID reeturns recorder's xid.
+func (R *syslogRecorder) GetID() xid.ID {
 	return R.id
 }
 

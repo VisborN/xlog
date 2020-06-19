@@ -1,4 +1,9 @@
 *.log
 dbg.outp
+go.sum
+
 CHANGELOG.md
 TD.md
+
+TODO*
+old/

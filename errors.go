@@ -28,6 +28,10 @@ var ErrNotWhereToWrite = errors.New("xlog: " +
 	"the logger has no default recorders, " +
 	"but custom recorders are not specified")
 
+// ErrNotListening returns when Logger tries to send a signal
+// to recorder which is not ready to receive signals.
+var ErrNotListening error = errors.New("xlog: recorder is not listening")
+
 /* DEPRECATED
 // The error transmits by recorder listener when it receives unknown signal.
 var ErrUnknownSignal = errors.New("unknown signal") */
@@ -44,10 +48,10 @@ var _ErrFalseInit error = errors.New("[OK] false initialisation")
 
 // -----------------------------------------------------------------------------
 
-// BatchResult using to accumulate statuses (success and failed) of several
-// operations and used as kinda a partial error when some operations are
-// succeeded and some not. It's used in handling lists of recorders, like
-// initialisation ops.
+// BatchResult is designed to accumulate the status (success and failure)
+// of several operations. It is used as a partial error when some operations
+// complete successfully and some do not. It is mainly used in processing lists
+// of recorders, for example during initialisation ops.
 type BatchResult struct {
 	errors     map[RecorderID]error
 	successful []RecorderID
