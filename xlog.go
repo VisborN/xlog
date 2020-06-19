@@ -211,13 +211,15 @@ const (
 	SigDropDbgChan signalType = "SIG_GROP_DBG"
 )
 
-func SignalInit(chErr chan error) controlSignal       { return controlSignal{SigInit, chErr} }
-func SignalClose() controlSignal                      { return controlSignal{SigClose, nil} }
-func SignalStop() controlSignal                       { return controlSignal{SigStop, nil} }
-func SignalSetErrChan(chErr chan error) controlSignal { return controlSignal{SigSetErrChan, chErr} }
-func SignalSetDbgChan(chDbg chan error) controlSignal { return controlSignal{SigSetDbgChan, chDbg} }
-func SignalDropErrChan() controlSignal                { return controlSignal{SigDropErrChan, nil} }
-func SignalDropDbgChan() controlSignal                { return controlSignal{SigDropDbgChan, nil} }
+func SignalInit(chErr chan error) controlSignal         { return controlSignal{SigInit, chErr} }
+func SignalClose() controlSignal                        { return controlSignal{SigClose, nil} }
+func SignalStop() controlSignal                         { return controlSignal{SigStop, nil} }
+func SignalSetErrChan(chErr chan<- error) controlSignal { return controlSignal{SigSetErrChan, chErr} }
+func SignalSetDbgChan(chDbg chan<- debugMessage) controlSignal {
+	return controlSignal{SigSetDbgChan, chDbg}
+}
+func SignalDropErrChan() controlSignal { return controlSignal{SigDropErrChan, nil} }
+func SignalDropDbgChan() controlSignal { return controlSignal{SigDropDbgChan, nil} }
 
 type FormatFunc func(*LogMsg) string
 
@@ -309,6 +311,9 @@ func (L *Logger) RegisterRecorder(
 	if id == RecorderID("") {
 		return ErrWrongParameter
 	}
+	if intrf.ChCtl == nil || intrf.ChMsg == nil {
+		return ErrWrongParameter
+	}
 
 	if len(asDefault) == 0 {
 		asDefault = append(asDefault, true)
@@ -397,6 +402,10 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 				return internalCritical("xlog: missing valid id (.recordersInit)") // PANIC
 			} else {
 				if initialised {
+					if rc.ChCtl == nil {
+						L.RUnlock()
+						return internalCritical("xlog: sending to nil channel") // PANIC
+					}
 					rc.ChCtl <- SignalClose()
 				}
 			}
@@ -476,7 +485,6 @@ func (L *Logger) Initialise() error {
 			// UNREACHABLE //
 
 			// recorder is registered but id is missing in states map
-			//br.Fail(id, internalError(".recordersInit -> missing valid id (unreachable)"))
 			return internalCritical("xlog: missing valid id (.recordersInit)") // PANIC
 		}
 	}
@@ -679,6 +687,7 @@ func (L *Logger) ChangeSeverityOrder(
 		L.RUnlock()
 		return ErrWrongFlagValue
 	}
+
 	if srcFlag == trgFlag {
 		L.RUnlock()
 		return ErrWrongFlagValue
@@ -792,6 +801,7 @@ func (L *Logger) Write(flags MsgFlagT, msgFmt string, msgArgs ...interface{}) er
 // Returns nil on success and error on fail.
 func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 	// {Logger}: only read access
+
 	if CfgGlobalDisable.Get() {
 		return nil
 	}
@@ -900,7 +910,7 @@ func (L *Logger) WriteMsg(recorders []RecorderID, msg *LogMsg) error {
 // flag.
 func (L *Logger) severityProtector(orderlist *list.List, flags *MsgFlagT) error {
 	if orderlist == nil || orderlist.Len() == 0 {
-		return internalError("wrong 'orderlist' parameter value")
+		return internalError("[severityProtector] wrong 'orderlist' parameter value")
 	}
 	for e := orderlist.Front(); e != nil; e = e.Next() {
 		if sev, ok := e.Value.(MsgFlagT); ok {
