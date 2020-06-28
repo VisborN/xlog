@@ -30,7 +30,8 @@ type ioDirectRecorder struct {
 	closer func(interface{})
 }
 
-// NewIoDirectRecorder allocates and returns a new io direct recorder.
+// NewIoDirectRecorder allocates and returns a new I/O direct recorder
+// (recorder which represents endpoint as io.Writer).
 func NewIoDirectRecorder(
 	writer io.Writer, prefix ...string,
 ) *ioDirectRecorder {
@@ -81,6 +82,7 @@ func (R *ioDirectRecorder) OnClose(f func(interface{})) *ioDirectRecorder {
 	return R
 }
 
+// ChangePrefixOnFly changes log prefix for this recorder. [mutex r/w locks]
 func (R *ioDirectRecorder) ChangePrefixOnFly(prefix string) {
 	R.Lock()
 	defer R.Unlock()
@@ -211,9 +213,7 @@ func (R *ioDirectRecorder) _log(format string, args ...interface{}) { // MAY PAN
 
 // -----------------------------------------------------------------------------
 
-// TODO: more flags
-// TODO: file & line
-func IoDirectDefaultFormatter(msg *LogMsg) string {
+func IoDirectDefaultFormatter(msg *LogMsg) string { // TODO: more flags; file & line
 	// short date/time format
 	h, m, s := msg.GetTime().Clock()
 	yy, mm, dd := msg.GetTime().Date()

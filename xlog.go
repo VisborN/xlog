@@ -26,6 +26,7 @@ custom flags bits:
 
 */
 
+// MsgFlagT type represents messages bit flags for severities and attributes.
 type MsgFlagT uint16
 
 const ( // severity flags (log level)
@@ -56,16 +57,19 @@ const SeverityShadowMask MsgFlagT = 0xCF00
 // bit-reset (reversed) mask for attribute flags
 const AttributeShadowMask MsgFlagT = 0x30FF
 
-// predefined severity sets
-const SeverityAll MsgFlagT = 0x30FF
-const SeverityMajor MsgFlagT = 0x001F
-const SeverityMinor MsgFlagT = 0x00E0
-const SeverityDefault MsgFlagT = 0x00FF
-const SeverityCustom MsgFlagT = 0x3000
+const ( // predefined severity sets
+	SeverityAll     MsgFlagT = 0x30FF // Default | Custom
+	SeverityMajor   MsgFlagT = 0x001F // Major = Emerg | Alert | Critical | Error | Warning
+	SeverityMinor   MsgFlagT = 0x00E0 // Minor = Notice | Info
+	SeverityDefault MsgFlagT = 0x00FF // Default = Major | Minor | Debug
+	SeverityCustom  MsgFlagT = 0x3000 // Custom = CustomB1 | CustomB2
+)
 
 // used when severity is 0
 const defaultSeverity = Info
 
+// Returns string with severity name in text format.
+// For unexpected flags returns string with hexadecimal code.
 func (f MsgFlagT) String() string {
 	switch f {
 	case Emerg:
@@ -152,16 +156,26 @@ func (m *bool_s) Get() bool {
 	return m.v
 }
 
+// If true, all Logger methods will be skipped.
+//
+//   default value: false
 var CfgGlobalDisable bool_s = bool_s{v: false}
+
+// If true, Initialise function with passed 'objects' argument
+// will start listeners by self for not-listening recorders.
+//
+//   default value: true
 var CfgAutoStartListening bool_s = bool_s{v: true}
 
 // -----------------------------------------------------------------------------
 
+// LogMsg represents a log message. It contains message data,
+// flags, time and extra data for non-default handling.
 type LogMsg struct {
 	time    time.Time
 	flags   MsgFlagT
 	content string
-	Data    interface{}
+	Data    interface{} // extra data
 }
 
 // NewLogMsg allocates and returns a new LogMsg.
@@ -171,7 +185,7 @@ func NewLogMsg() *LogMsg {
 	return lm
 }
 
-// Message builds and returns simple message with default severity.
+// Message builds and returns simple message with default severity (0).
 func Message(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	lm := new(LogMsg)
 	lm.time = time.Now()
@@ -197,7 +211,7 @@ func (LM *LogMsg) Addf(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	return LM
 }
 
-// Addfn adds new string to existing message text as a new line.
+// Addfn adds new string to the existing message text as a new line.
 func (LM *LogMsg) Addfn(msgFmt string, msgArgs ...interface{}) *LogMsg {
 	LM.content += "\n" + fmt.Sprintf(msgFmt, msgArgs...)
 	return LM
@@ -217,7 +231,7 @@ func (LM *LogMsg) GetContent() string { return LM.content }
 
 type signalType string
 
-type controlSignal struct { // TMP RPLS
+type controlSignal struct {
 	stype signalType
 	data  interface{}
 }
@@ -243,8 +257,13 @@ func SignalSetDbgChan(chDbg chan<- debugMessage) controlSignal {
 func SignalDropErrChan() controlSignal { return controlSignal{SigDropErrChan, nil} }
 func SignalDropDbgChan() controlSignal { return controlSignal{SigDropDbgChan, nil} }
 
+// FormatFunc is an interface for the recorder's format function. This
+// function handles the log message object and returns final output string.
 type FormatFunc func(*LogMsg) string
 
+// LogRecorder is an interface for the log endpoint recorder. These types
+// should provide write functions and other methods to correctly interact
+// with a logging destination objects (e.g. files, streams etc).
 type LogRecorder interface {
 	Listen()
 	IsListening() bool
@@ -252,13 +271,14 @@ type LogRecorder interface {
 	GetID() xid.ID
 }
 
-// RecorderInterface structure represents recorder interface channels.
+// RecorderInterface structure represents interface channels of the recorder.
 type RecorderInterface struct {
 	ChCtl chan<- controlSignal
 	ChMsg chan<- LogMsg
 	id    xid.ID
 }
 
+// RecorderID is an identifier used in Logger functions to select recorders.
 type RecorderID string
 
 type Logger struct {
@@ -302,7 +322,7 @@ func (r *_recList) check(rec RecorderID) bool {
 	return false
 }
 
-// NewLogger allocates and returns a new logger.
+// NewLogger allocates and returns new logger.
 func NewLogger() *Logger {
 	l := new(Logger)
 	l.recorders = make(map[RecorderID]RecorderInterface)
@@ -397,7 +417,8 @@ func (L *Logger) RegisterRecorder(
 	return nil
 }
 
-// UnregisterRecorder unbinds specified recorder from the logger (send a close signal).
+// UnregisterRecorder disconnects specified recorder from the logger
+// (sends a close signal) and removes recorder interface from the logger.
 func (L *Logger) UnregisterRecorder(id RecorderID) error {
 	if CfgGlobalDisable.Get() {
 		return nil
@@ -464,7 +485,7 @@ func (L *Logger) UnregisterRecorder(id RecorderID) error {
 	return nil
 }
 
-// Initialise invokes initialisation functions of each registered recorder.
+// Initialise sends an initialisation signal to each registered recorder.
 func (L *Logger) Initialise(objects ...ListOfRecorders) error {
 	if CfgGlobalDisable.Get() {
 		return nil
@@ -540,7 +561,9 @@ main_cycle:
 	}
 }
 
-// Close invokes closing functions of each registered recorder.
+// Close disconnects (sends a close signal) all registered recorders
+// and sets the 'uninitialised' state for the logger. Meanwhile, it
+// does not unregister (remove from the logger) recorders.
 func (L *Logger) Close() {
 	L.Lock()
 	defer L.Unlock()
@@ -558,7 +581,7 @@ func (L *Logger) Close() {
 	L.initialised = false
 }
 
-// DefaultsSet sets given recorders as default for that logger.
+// DefaultsSet sets given recorders as default for this logger.
 func (L *Logger) DefaultsSet(recorders []RecorderID) error {
 	if CfgGlobalDisable.Get() {
 		return nil
@@ -594,7 +617,7 @@ func (L *Logger) DefaultsSet(recorders []RecorderID) error {
 	return nil
 }
 
-// DefaultsAdd adds given recorders into the default list for that logger.
+// DefaultsAdd adds given recorders into the default list of the logger.
 func (L *Logger) DefaultsAdd(recorders []RecorderID) error {
 	if CfgGlobalDisable.Get() {
 		return nil
@@ -639,7 +662,7 @@ main_iter:
 	return nil
 }
 
-// DefaultsRemove removes given recorders form defaults in that logger.
+// DefaultsRemove removes given recorders form defaults in this logger.
 func (L *Logger) DefaultsRemove(recorders []RecorderID) error {
 	if CfgGlobalDisable.Get() {
 		return nil
@@ -683,13 +706,10 @@ func (L *Logger) DefaultsRemove(recorders []RecorderID) error {
 	return nil
 }
 
-// ChangeSeverityOrder changes severity order for the specified
-// recorder. It takes specified flag and moves it before/after
-// the target flag position.
+// ChangeSeverityOrder changes severity order for the specified recorder.
+// It takes specified flag and moves it before/after the target flag position.
 //
 // Only custom flags can be moved (currently disabled).
-//
-// The function returns nil on success and error overwise.
 func (L *Logger) ChangeSeverityOrder(
 	recorder RecorderID, srcFlag MsgFlagT, dir ssDirection, trgFlag MsgFlagT,
 ) error {
@@ -824,7 +844,7 @@ func (L *Logger) SetSeverityMask(recorder RecorderID, flags MsgFlagT) error {
 
 // Write builds the message with format line and specified message flags, then calls
 // WriteMsg. It allows avoiding calling fmt.Sprintf() function and LogMsg's functions
-// directly, it wraps them.
+// directly, it wraps all of it.
 //
 // Returns nil in case of success otherwise returns an error.
 func (L *Logger) Write(flags MsgFlagT, msgFmt string, msgArgs ...interface{}) error {
