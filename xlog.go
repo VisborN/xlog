@@ -71,7 +71,7 @@ const defaultSeverity = Info
 // Returns string with severity name in text format.
 // For unexpected flags returns string with hexadecimal code.
 func (f MsgFlagT) String() string {
-	switch f {
+	switch f &^ SeverityShadowMask {
 	case Emerg:
 		return "EMERG"
 	case Alert:
