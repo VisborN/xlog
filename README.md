@@ -113,7 +113,7 @@ If you have a long operation and you want to handle it with a single log message
 you can use `LogMsg` to construct a complex message. In this case, you should use
 `Logger.WriteMsg()` instead.
 ```go
-msg := NewLogMsg().
+msg := xlog.NewLogMsg().
     SetFlags(xlog.Info).
     Setf("message header\n")
 // ... do something
@@ -130,10 +130,10 @@ a message, you should use `Logger.WriteMsg()` with specified list of recorders I
 as the first argument. Otherwise (nil argument), logger will use default recorders.
 ```go
 // write only to the stdout recorder (registered earlier as recStdout)
-logger.WriteMsg([]RecorderID{recStdout}, xlog.Message("my message %d", 123))
+logger.WriteMsg([]xlog.RecorderID{recStdout}, xlog.Message("my message %d", 123))
 
 // send Critical message to all recorders
-recAll := []RecorderID{recStdout, recInfo, recErr}
+recAll := []xlog.RecorderID{recStdout, recInfo, recErr}
 logger.WriteMsg(recAll, xlog.Message("my message").SetFlags(xlog.Critical))
 ```
 *`xlog.Message("msg")` is equivalent to `xlog.NewMsg().Setf("msg")`*
@@ -195,12 +195,12 @@ go func() {
 }
 
 r := xlog.NewIoDirectRecorder(os.Stdout, "my-prefix")
-r.Intrf().ChCtl <- SignalSetErrChan(chErr)
+r.Intrf().ChCtl <- xlog.SignalSetErrChan(chErr)
 runtime.Gosched()
 
 // ...
 
-r.Intrf().ChCtl <- SignalDropErrChan()
+r.Intrf().ChCtl <- xlog.SignalDropErrChan()
 time.Sleep(time.Second)
 close(chErr)
 ```
@@ -261,7 +261,7 @@ func formatter(msg *xlog.LogMsg) string {
 
 // ...
 
-msg := NewLogMsg().Setf("message")
+msg := xlog.NewLogMsg().Setf("message")
 msg.Data = payload{"extra", 83485}
 logger.WriteMsg(nil, msg)
 ```
